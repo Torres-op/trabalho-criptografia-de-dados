@@ -1,0 +1,28 @@
+{% load static %}<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Mensagens Criptografadas{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'messenger/css/app.css' %}">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">msgenc</span>
+    <nav>
+      <a href="{% url 'messenger:compose' %}"
+         class="{% if request.resolver_match.url_name == 'compose' %}active{% endif %}">Compor</a>
+      <a href="{% url 'messenger:translator' %}"
+         class="{% if request.resolver_match.url_name == 'translator' %}active{% endif %}">Tradutor</a>
+    </nav>
+  </header>
+
+  <p id="fake-warning" class="warning" hidden></p>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

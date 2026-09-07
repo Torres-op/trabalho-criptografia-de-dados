@@ -1,0 +1,27 @@
+{% extends "messenger/base.html" %}
+{% load static %}
+
+{% block title %}Compor — Mensagens Criptografadas{% endblock %}
+
+{% block content %}
+<h1>Compor mensagem</h1>
+<p class="subtitle">A mensagem é comprimida e criptografada no seu navegador. O arquivo gerado é o que você envia ao destinatário.</p>
+
+<label for="text">Mensagem</label>
+<textarea id="text" rows="10" placeholder="Escreva aqui..."></textarea>
+<div class="row">
+  <span id="counter" class="counter"></span>
+  <button id="generate" type="button">Gerar mensagem criptografada</button>
+</div>
+
+<div id="status" class="status" hidden></div>
+
+<table id="stats" class="stats" hidden>
+  <caption>Compressão</caption>
+  <tbody></tbody>
+</table>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{% static 'messenger/js/compose.js' %}"></script>
+{% endblock %}
