@@ -185,7 +185,7 @@ messenger/
 |---|---|---|
 | `format.js` | **real** — layout D5 completo, com validação de magic, versão, bits reservados e `sender_id` | (adiantou 5.1 e parte de 5.2) |
 | `environment.js` | **real** — `requireSecureContext()` e `requestPersistentStorage()` | (adiantou 1.8 e 4.9) |
-| `huffman.js` | falso — `encode` devolve UTF-8 puro, `compressed: false` | Épico 3 |
+| `huffman.js` | **real desde o Épico 3** — Huffman canônico sobre bytes UTF-8 | (concluído) |
 | `crypto.js` | falso — XOR com constante fixa | Épico 4 |
 
 Os módulos falsos exportam `FAKE_IMPLEMENTATION = true`. O `app.js` lê essa flag e as páginas exibem um aviso permanente de que nada ali é seguro. Quando os Épicos 3 e 4 substituírem as implementações, a flag some e o aviso desaparece sozinho — **sem tocar no `app.js`**, que é o critério do 0.3.
@@ -461,27 +461,40 @@ Os códigos de 3 bits ficaram com o espaço e o `a`; as vogais restantes e o `r`
 
 > Os testes travam as propriedades que importam: determinismo em 100 execuções, ausência de prefixo entre quaisquer dois códigos (força bruta sobre os 257×257 pares), igualdade de Kraft, otimalidade (nenhum símbolo mais frequente recebe código mais longo) e consistência do índice de decodificação com os códigos.
 
-### 3.3 Implementar `encode(text)`
-- `TextEncoder` para obter os bytes UTF-8 do texto.
-- Emitir o código de cada byte, depois o código do `EOF`, empacotando os bits em um `Uint8Array` (MSB-first dentro de cada byte).
-- **Fallback de expansão** (D5): se o resultado ficar maior ou igual aos bytes UTF-8 originais, retornar `{ bytes: utf8Original, compressed: false }`. Caso contrário, `{ bytes: compressedBytes, compressed: true }`.
-- **Critério de aceite**: para um parágrafo de referência em PT-BR de ≥ 300 caracteres, a taxa de compressão é ≤ 0,65 e `compressed === true`. Para a string `"oi"`, `compressed === false`.
+### 3.3 Implementar `encode(text)` ✅
+- `TextEncoder` para obter os bytes UTF-8; emite o código de cada byte, depois o do `EOF`, empacotando os bits **MSB-first** dentro de cada byte.
+- O acumulador de bits usa **aritmética** (`acc * 2 ** length + code`), não deslocamento. `<<` opera em 32 bits com sinal e corromperia a saída se um código longo coincidisse com bits pendentes.
+- O buffer de saída é alocado **exatamente**: a soma dos comprimentos dos códigos é conhecida antes de escrever, então não há realocação.
+- **Fallback de expansão** (D5): se o resultado ficar maior ou igual ao UTF-8 original, devolve `{ bytes: utf8Original, compressed: false }`.
+- **Critério de aceite**: parágrafo PT-BR de ≥ 300 caracteres dá taxa ≤ 0,65 com `compressed === true`; `"oi"` dá `compressed === false`. ✅
 
-### 3.4 Implementar `decode(bytes, compressed)`
-- Se `compressed === false`, apenas `TextDecoder` sobre os bytes.
-- Se `true`, percorrer os bits navegando a tabela de decodificação, acumulando bytes até encontrar `EOF`; então `TextDecoder` sobre o resultado.
-- Lançar erro explícito se os bits acabarem antes do `EOF` (arquivo truncado).
-- **Critério de aceite**: `decode(...encode(text)) === text` para todos os textos de teste do 3.5.
+### 3.4 Implementar `decode(bytes, compressed)` ✅
+- Com `compressed === false`, apenas `TextDecoder`. Com `true`, percorre os bits usando o **índice canônico** do 3.2 (`firstCode`/`firstIndex`/`countByLength`) — sem árvore materializada, sem alocar nós.
+- O buffer de saída também é alocado de uma vez: cada símbolo consome no mínimo `minLength` bits, então `bytes.length × 8 / minLength` é um teto exato.
+- Lança `HuffmanError` se os bits acabarem antes do `EOF`, com a mensagem de arquivo truncado prevista em 9.5.
+- `TextDecoder` em modo `fatal` — bytes que não formam UTF-8 válido viram erro, nunca texto com caracteres de substituição.
+- **Critério de aceite**: `decode(...encode(text)) === text` em todos os casos do 3.5. ✅
 
-### 3.5 Testes unitários do módulo Huffman
-- Frases em português com acentos, cedilha e til.
-- Texto vazio (`""`).
-- String de um único caractere.
-- Emoji e caracteres CJK (validam que D1 eliminou o problema do escape).
-- Todos os 256 bytes possíveis em sequência.
-- Parágrafo longo (≥ 2000 caracteres) — checar tempo de execução.
-- Arquivo truncado — deve lançar erro, nunca retornar texto parcial silenciosamente.
-- **Critério de aceite**: todos os round-trips retornam o texto original exato; o caso truncado lança erro.
+### 3.5 Testes unitários do módulo Huffman ✅
+**30 testes** em `tests/huffman.test.js`, cobrindo o que o item pedia e mais:
+- 14 round-trips: acentos, cedilha, til, **crase**, texto vazio, um caractere, só espaços, quebras de linha (incluindo `\r\n`), emoji, CJK, cirílico, grego, pontuação pesada e dígitos.
+- Faixa Latin-1 completa (256 caracteres) e um texto cobrindo **todas as larguras de UTF-8** (1 a 4 bytes) — a validação de que D1 eliminou o problema do escape.
+- Fallback nos dois sentidos, e a garantia de que `encode` **nunca** devolve resultado maior que o UTF-8 original.
+- Truncamento: 11 cortes diferentes no fim do fluxo, exigindo erro ou texto diferente do original — nunca texto parcial silencioso.
+- Desempenho: 100 mil caracteres em ida e volta.
+
+**Compressão medida (round-trip verificado em todos):**
+
+| Texto | Original | Comprimido | Taxa |
+|---|---|---|---|
+| Parágrafo PT-BR (313 B) | 313 B | 176 B | **−43,8%** |
+| Chat longo | 279 B | 166 B | **−40,5%** |
+| Texto formal | 172 B | 100 B | **−41,9%** |
+| Chat curto | 46 B | 34 B | −26,1% |
+| `"oi"` | 2 B | 2 B | 0% (fallback) |
+| Só emoji | 16 B | 16 B | 0% (fallback) |
+
+> O fallback dispara exatamente onde deveria: texto curto demais para amortizar o EOF, e conteúdo cujos bytes estão no piso da tabela. Em nenhum caso o arquivo cresce.
 
 ### 3.6 Medir a taxa de compressão
 - Função `stats(text)` retornando `{ characters, originalBytes, compressedBytes, ratio, bitsPerChar }`.
