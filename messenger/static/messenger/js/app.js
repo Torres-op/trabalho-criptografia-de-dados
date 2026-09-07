@@ -14,7 +14,8 @@ export async function composeMessage(text, aesKey = null) {
   }
 
   const createdAt = Date.now();
-  const { bytes, compressed } = huffman.encode(text);
+  const encoded = huffman.encode(text);
+  const { bytes, compressed } = encoded;
   const aad = format.buildAad({ senderId: SENDER_ID, createdAt, compressed });
   const { iv, ciphertext } = await cipher.encrypt(bytes, aesKey, aad);
   const file = format.pack({
@@ -25,20 +26,17 @@ export async function composeMessage(text, aesKey = null) {
     ciphertext,
   });
 
-  const originalBytes = new TextEncoder().encode(text).length;
+  const measured = huffman.measure(text, encoded);
 
   return {
     file,
     createdAt,
     name: format.fileName(createdAt),
     stats: {
-      characters: [...text].length,
-      originalBytes,
-      compressedBytes: bytes.length,
+      ...measured,
+      compressionRatio: measured.ratio,
       fileBytes: file.length,
-      compressed,
-      compressionRatio: originalBytes === 0 ? 1 : bytes.length / originalBytes,
-      fileRatio: originalBytes === 0 ? 1 : file.length / originalBytes,
+      fileRatio: measured.originalBytes === 0 ? 1 : file.length / measured.originalBytes,
     },
   };
 }

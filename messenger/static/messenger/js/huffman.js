@@ -13,9 +13,9 @@ export function encode(text) {
   const packed = compress(utf8);
 
   if (packed.length >= utf8.length) {
-    return { bytes: utf8, compressed: false };
+    return { bytes: utf8, compressed: false, originalBytes: utf8.length };
   }
-  return { bytes: packed, compressed: true };
+  return { bytes: packed, compressed: true, originalBytes: utf8.length };
 }
 
 export function decode(bytes, compressed) {
@@ -27,10 +27,9 @@ export function decode(bytes, compressed) {
   }
 }
 
-export function stats(text) {
-  const originalBytes = new TextEncoder().encode(text).length;
+export function measure(text, encoded) {
+  const { bytes, compressed, originalBytes } = encoded;
   const characters = [...text].length;
-  const { bytes, compressed } = encode(text);
 
   return {
     characters,
@@ -39,7 +38,12 @@ export function stats(text) {
     compressed,
     ratio: originalBytes === 0 ? 1 : bytes.length / originalBytes,
     bitsPerChar: characters === 0 ? 0 : (bytes.length * 8) / characters,
+    originalBitsPerChar: characters === 0 ? 0 : (originalBytes * 8) / characters,
   };
+}
+
+export function stats(text) {
+  return measure(text, encode(text));
 }
 
 function compress(utf8) {

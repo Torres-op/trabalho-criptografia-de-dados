@@ -1,5 +1,6 @@
 import { composeMessage, isFakeImplementation } from "./app.js";
 import { EnvironmentError, requireSecureContext } from "./environment.js";
+import { HEADER_SIZE } from "./format.js";
 import * as ui from "./ui.js";
 
 const textArea = document.querySelector("#text");
@@ -7,6 +8,7 @@ const button = document.querySelector("#generate");
 const counter = document.querySelector("#counter");
 const status = document.querySelector("#status");
 const statsPanel = document.querySelector("#stats");
+const note = document.querySelector("#stats-note");
 const warning = document.querySelector("#fake-warning");
 
 let last = null;
@@ -40,6 +42,7 @@ function updateCounter() {
 async function generate() {
   ui.clearStatus(status);
   statsPanel.hidden = true;
+  note.hidden = true;
   button.disabled = true;
   button.textContent = "Gerando...";
 
@@ -63,16 +66,23 @@ async function generate() {
 
 function renderStats(stats) {
   const rows = [
-    ["Original", `${ui.formatBytes(stats.originalBytes)} (${stats.characters} caracteres)`],
     [
-      "Após compressão",
+      "Original",
+      `${ui.formatBytes(stats.originalBytes)} · ${stats.characters.toLocaleString("pt-BR")} caracteres`,
+    ],
+    [
+      "Após Huffman",
       stats.compressed
-        ? `${ui.formatBytes(stats.compressedBytes)} (${ui.formatPercent(stats.compressionRatio)})`
-        : "compressão dispensada",
+        ? `${ui.formatBytes(stats.compressedBytes)} · ${ui.formatPercent(stats.compressionRatio)}`
+        : "compressão dispensada — o texto ficaria maior",
     ],
     [
       "Arquivo final",
-      `${ui.formatBytes(stats.fileBytes)} (${ui.formatPercent(stats.fileRatio)})`,
+      `${ui.formatBytes(stats.fileBytes)} · ${ui.formatPercent(stats.fileRatio)}`,
+    ],
+    [
+      "Bits por caractere",
+      `${ui.formatDecimal(stats.bitsPerChar)} · UTF-8 usaria ${ui.formatDecimal(stats.originalBitsPerChar)}`,
     ],
   ];
 
@@ -88,6 +98,16 @@ function renderStats(stats) {
     body.append(tr);
   }
   statsPanel.hidden = false;
+
+  const grew = stats.fileRatio > 1;
+  note.hidden = !grew;
+  if (grew) {
+    note.textContent =
+      `O arquivo carrega ${HEADER_SIZE} bytes fixos de cabeçalho — formato, versão, ` +
+      "remetente, data e vetor de inicialização. Em mensagens curtas esse custo " +
+      "supera o ganho da compressão; a partir de umas poucas centenas de " +
+      "caracteres o arquivo já sai menor que o texto original.";
+  }
 }
 
 start();

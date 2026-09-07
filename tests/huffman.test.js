@@ -4,6 +4,7 @@ import {
   HuffmanError,
   decode,
   encode,
+  measure,
   stats,
 } from "../messenger/static/messenger/js/huffman.js";
 
@@ -146,7 +147,42 @@ describe("estatísticas (3.6)", () => {
     const s = stats("");
     expect(s.characters).toBe(0);
     expect(s.bitsPerChar).toBe(0);
+    expect(s.originalBitsPerChar).toBe(0);
     expect(Number.isFinite(s.ratio)).toBe(true);
+  });
+
+  it("compara os bits por caractere com o custo do UTF-8", () => {
+    const s = stats(PARAGRAFO);
+    expect(s.originalBitsPerChar).toBeCloseTo((s.originalBytes * 8) / s.characters, 10);
+    expect(s.bitsPerChar).toBeLessThan(s.originalBitsPerChar);
+  });
+
+  it("mede sem reprocessar quando já se tem o resultado do encode", () => {
+    const encoded = encode(PARAGRAFO);
+    expect(measure(PARAGRAFO, encoded)).toEqual(stats(PARAGRAFO));
+  });
+
+  it("expõe originalBytes no retorno do encode", () => {
+    const esperado = new TextEncoder().encode(PARAGRAFO).length;
+    expect(encode(PARAGRAFO).originalBytes).toBe(esperado);
+    expect(encode("oi").originalBytes).toBe(2);
+  });
+});
+
+describe("ponto de equilíbrio do arquivo", () => {
+  const HEADER_SIZE = 27;
+
+  it("compensa o cabeçalho a partir de algumas centenas de caracteres", () => {
+    const { bytes } = encode(PARAGRAFO);
+    const originais = new TextEncoder().encode(PARAGRAFO).length;
+    expect(bytes.length + HEADER_SIZE).toBeLessThan(originais);
+  });
+
+  it("não compensa o cabeçalho em mensagem curta", () => {
+    const curta = "Chego às 19h";
+    const { bytes } = encode(curta);
+    const originais = new TextEncoder().encode(curta).length;
+    expect(bytes.length + HEADER_SIZE).toBeGreaterThan(originais);
   });
 });
 

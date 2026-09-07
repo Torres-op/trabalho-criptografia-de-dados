@@ -421,7 +421,7 @@ export function requireSecureContext() {
 
 ---
 
-## Épico 3 — Compressão: Huffman (JS)
+## Épico 3 — Compressão: Huffman (JS) ✅
 
 > Ver **D1, D2, D3**. Alfabeto = bytes `0..255` + `EOF` (índice 256).
 
@@ -496,10 +496,26 @@ Os códigos de 3 bits ficaram com o espaço e o `a`; as vogais restantes e o `r`
 
 > O fallback dispara exatamente onde deveria: texto curto demais para amortizar o EOF, e conteúdo cujos bytes estão no piso da tabela. Em nenhum caso o arquivo cresce.
 
-### 3.6 Medir a taxa de compressão
-- Função `stats(text)` retornando `{ characters, originalBytes, compressedBytes, ratio, bitsPerChar }`.
-- Usada pelo painel do Épico 7.5.
-- **Critério de aceite**: os números batem com o cálculo manual para uma entrada conhecida.
+### 3.6 Medir a taxa de compressão ✅
+- `stats(text)` devolve `{ characters, originalBytes, compressedBytes, compressed, ratio, bitsPerChar, originalBitsPerChar }`. O campo `originalBitsPerChar` foi acrescentado para o painel poder comparar o custo do Huffman com o do UTF-8 puro, que é o número mais didático da tela.
+- `measure(text, encoded)` calcula os mesmos números **a partir de um `encode` já feito**. O `composeMessage` usa essa via: antes ele recalculava tamanho e taxa por conta própria, duplicando a lógica e reprocessando o texto. Agora há uma fonte única.
+- `encode` passou a devolver também `originalBytes` — extensão aditiva ao contrato do 0.3, que não quebra nenhum consumidor e elimina o reprocessamento do texto só para saber seu tamanho.
+- Painel ligado no `compose.js`, com as quatro linhas previstas no 7.5.
+- **Critério de aceite**: os números batem com o cálculo manual. ✅ **35 testes** em `tests/huffman.test.js`.
+
+**Painel como aparece na tela:**
+
+```
+Compressão
+  Original             268 B · 256 caracteres
+  Após Huffman         158 B · -41,0%
+  Arquivo final        185 B · -31,0%
+  Bits por caractere   4,94 · UTF-8 usaria 8,38
+```
+
+> **O painel expôs um comportamento que precisava de explicação.** Em mensagens curtas o *arquivo* cresce — "Chego às 19h" vira 40 B a partir de 13 B, +207,7% — porque o cabeçalho do D5 tem 27 bytes fixos. Sem contexto, o número parece defeito.
+>
+> A tela passou a exibir uma nota quando isso acontece, explicando que o cabeçalho é custo fixo e que a partir de algumas centenas de caracteres o arquivo já sai menor que o texto original. Dois testes travam os dois lados desse ponto de equilíbrio.
 
 ---
 
