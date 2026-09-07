@@ -425,13 +425,18 @@ export function requireSecureContext() {
 
 > Ver **D1, D2, D3**. Alfabeto = bytes `0..255` + `EOF` (índice 256).
 
-### 3.1 Levantar a tabela de frequência de bytes (PT-BR)
-- Escrever um script auxiliar (`tools/gerar_tabela.js`) que lê um corpus de texto em português, converte para UTF-8 e conta a frequência de cada byte.
-- Corpus sugerido: alguns capítulos de domínio público (Machado de Assis via Domínio Público / Gutenberg) — texto real, com acentuação e pontuação naturais.
-- Atribuir frequência mínima **1** a todo byte que não apareceu, para que **todos os 256 bytes tenham um código** (sem isso, um byte inesperado quebra o `encode`).
-- Atribuir frequência **1** ao símbolo `EOF`.
-- Salvar o resultado como constante em `huffman.js`: `export const FREQ_TABLE = new Uint32Array(257)`.
-- **Critério de aceite**: a tabela tem exatamente 257 entradas, todas ≥ 1, e está commitada como constante (não é recalculada em runtime).
+### 3.1 Levantar a tabela de frequência de bytes (PT-BR) ✅
+- Script `tools/generate-frequency-table.js` lê o corpus de `tools/corpus/`, conta a frequência de cada byte e escreve o módulo `frequency-table.js`.
+- Frequência mínima **1** para todo byte que não apareceu, para que **todos os 256 bytes tenham código** — sem isso, um byte inesperado quebraria o `encode`. Frequência **1** também para o `EOF`.
+- Saída em módulo próprio (`messenger/static/messenger/js/frequency-table.js`), e não dentro do `huffman.js`: um literal de 257 números deixaria o codec ilegível, e um módulo separado deixa claro que é **dado gerado**. Ele exporta também `SOURCE`, com o gerador e o corpus de origem — provenência como dado, já que o código não leva comentários.
+- **Corpus (570 KB, todo em domínio público):** três obras de Machado de Assis via Project Gutenberg e o texto da Constituição de 1988. Fontes e situação legal em [`tools/corpus/FONTES.md`](../tools/corpus/FONTES.md).
+- **Critério de aceite**: 257 entradas, todas ≥ 1, commitada como constante e não recalculada em runtime. **20 testes** em `tests/frequency-table.test.js`.
+
+> **A medição mudou a escolha do corpus.** Com apenas as obras de Machado, `à` e `â` ficavam no piso da tabela (frequência 1) e custavam **24 bits** cada — como ocupam 2 bytes em UTF-8, a compressão os *expandia*. A causa é a ortografia de época dos textos do Gutenberg ("vae", "titulo", "aquella"), que quase não usa crase — e `à` é comuníssimo em português moderno.
+>
+> Acrescentar a Constituição (moderna, extensa, domínio público) levou `à` de 24,3 para 17,3 bits e tirou todos os acentuados comuns do piso. Em frase típica de chat, a estimativa de compressão foi de −31,4% para −33,0%.
+>
+> O teste `mantém %s acima do piso da tabela` trava essa propriedade: se alguém regenerar a tabela com um corpus ruim, a suíte acusa na hora.
 
 ### 3.2 Construir a árvore de Huffman canônica
 - `buildHuffmanTree(freqTable)` → `{ codeLengths: Uint8Array(257), codes: Uint32Array(257), decodeTable }`.
@@ -1013,7 +1018,7 @@ Limpar o IndexedDB e validar cada camada de **D11** isoladamente:
 
 - Apontar para o `infraestrutura.md` como ponto de partida: `cp .env.example .env` → `docker compose build` → bootstrap → `migrate` → `up`.
 - **Reforçar a convenção de duas origens do 1.7** (`localhost` = usuário A, `127.0.0.1` = usuário B) — é o que evita que cada dev invente o próprio jeito de testar o fluxo entre os dois usuários.
-- Regra da tabela de frequência: `tools/gerar_tabela.js` roda **uma vez**, o resultado é commitado, e ninguém regenera sem combinar com a equipe. Corpus diferentes produzem tabelas diferentes, e o sintoma é "texto decifrado vira lixo" — que parece bug de criptografia e não é.
+- Regra da tabela de frequência: `tools/generate-frequency-table.js` roda **uma vez**, o resultado é commitado, e ninguém regenera sem combinar com a equipe. Corpus diferentes produzem tabelas diferentes, e o sintoma é "texto decifrado vira lixo" — que parece bug de criptografia e não é.
 - Como usar os vetores de teste do 14.9.
 - **Critério de aceite**: um dev novo tem o ambiente rodando e o fluxo dos 2 usuários testado seguindo apenas este guia.
 
