@@ -438,11 +438,28 @@ export function requireSecureContext() {
 >
 > O teste `mantém %s acima do piso da tabela` trava essa propriedade: se alguém regenerar a tabela com um corpus ruim, a suíte acusa na hora.
 
-### 3.2 Construir a árvore de Huffman canônica
-- `buildHuffmanTree(freqTable)` → `{ codeLengths: Uint8Array(257), codes: Uint32Array(257), decodeTable }`.
-- Fila de prioridade (min-heap) com **desempate pelo menor índice de símbolo** (D3).
-- Após montar a árvore, extrair apenas os **comprimentos** de código e reatribuir os códigos de forma **canônica**: ordenar por (comprimento, índice do símbolo) e atribuir valores incrementais.
-- **Critério de aceite**: rodar a construção 100 vezes produz exatamente os mesmos `codeLengths` e `codes`; nenhum comprimento excede 32 bits.
+### 3.2 Construir a árvore de Huffman canônica ✅
+- `buildCodebook(frequencies)` em `huffman-codebook.js` → `{ lengths, codes, symbolsInCanonicalOrder, minLength, maxLength, countByLength, firstCode, firstIndex }`. O módulo também exporta `CODEBOOK`, já construído a partir da tabela do 3.1.
+- Min-heap com **desempate pelo menor índice de símbolo** (D3). Nós internos herdam o menor índice da própria subárvore, o que torna a comparação uma ordem total — sem isso, dois nós de mesmo peso poderiam trocar de lugar entre execuções.
+- A árvore é usada **apenas para medir os comprimentos** e depois descartada. Os códigos são reatribuídos na forma canônica: símbolos ordenados por (comprimento, índice) recebem valores incrementais.
+- A atribuição usa multiplicação (`code *= 2 ** delta`) em vez de deslocamento à esquerda: `<<` em JavaScript opera em 32 bits com sinal e corromperia códigos longos.
+- Em vez de materializar a árvore para decodificar, o códebook carrega o **índice canônico** (`firstCode`, `firstIndex`, `countByLength`) — decodificação em tempo constante por bit, sem alocar nós.
+- **Critério de aceite**: 100 construções seguidas produzem `lengths` e `codes` idênticos; nenhum comprimento excede 32 bits. **19 testes** em `tests/huffman-codebook.test.js`.
+
+**Resultado medido sobre o corpus do 3.1:**
+
+| Métrica | Valor |
+|---|---|
+| Comprimento mínimo / máximo | 3 / **20 bits** |
+| Igualdade de Kraft | **exatamente 1** (código completo) |
+| Bits por byte | **4,6306** |
+| Entropia do corpus | 4,5937 |
+| Excesso sobre a entropia | **0,80%** |
+| Compressão esperada | **−42,1%** |
+
+Os códigos de 3 bits ficaram com o espaço e o `a`; as vogais restantes e o `r`/`s` com 4 bits. Os 143 símbolos de 19 bits são os bytes que nunca aparecem no corpus e estão no piso da tabela.
+
+> Os testes travam as propriedades que importam: determinismo em 100 execuções, ausência de prefixo entre quaisquer dois códigos (força bruta sobre os 257×257 pares), igualdade de Kraft, otimalidade (nenhum símbolo mais frequente recebe código mais longo) e consistência do índice de decodificação com os códigos.
 
 ### 3.3 Implementar `encode(text)`
 - `TextEncoder` para obter os bytes UTF-8 do texto.
