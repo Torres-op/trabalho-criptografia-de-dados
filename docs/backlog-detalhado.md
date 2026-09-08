@@ -531,17 +531,27 @@ Compressão
 
 > Ver **D4** para os parâmetros exatos de derivação, **D10** para o requisito de contexto seguro e **D11** para a estratégia de recuperação da chave.
 
-### 4.1 Gerar par de chaves ECDH no navegador
-- `crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"])`.
-- Executar **apenas** se ainda não existir chave no IndexedDB.
-- Chamar `requireSecureContext()` (1.8) antes de qualquer operação criptográfica, em vez de quebrar com `undefined`.
-- **Critério de aceite**: primeiro acesso de cada usuário gera um par único; acessos seguintes reutilizam o mesmo par.
+### 4.1 Gerar par de chaves ECDH no navegador ✅
+> Implementado em `keys.js`, módulo novo. A separação é deliberada: `keystore.js` cuida só de persistência e não sabe nada de criptografia; `keys.js` cuida do ciclo de vida das chaves e usa o keystore. Os itens 4.4 e 11.1 vão acrescentar cache da chave do outro e fingerprint sem misturar as duas responsabilidades.
 
-### 4.2 Persistir as chaves localmente (`keystore.js`)
-- Salvar o `CryptoKey` diretamente no IndexedDB (a estrutura é serializável pelo structured clone — não precisa exportar para JWK).
-- Nunca usar `localStorage` (mais exposto a XSS).
-- API do módulo: `loadKeyPair()`, `saveKeyPair(pair)`, `hasKeyPair()`, `deleteKeyPair()`.
-- **Critério de aceite**: ao recarregar a página, a chave privada é recuperada sem gerar uma nova.
+- `generateKeyPair()` → `crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"])`.
+- `ensureKeyPair()` → devolve `{ pair, created }`; só gera se o keystore estiver vazio.
+- `requireSecureContext()` (1.8) chamado antes de qualquer operação.
+- `exportPublicKey()`, `importPublicKey()` e `validatePublicJwk()` já entram aqui, prontos para o 4.3 e o 4.4. A exportação devolve **apenas** `kty`, `crv`, `x`, `y` — nunca o `d`, que é o segredo.
+- **Chave privada extraível (`extractable: true`)** — exigência da camada 2 de D11: sem isso não há como exportar o backup `.msgkey` (11.3). O custo é que um XSS com acesso ao IndexedDB consegue exfiltrar a chave; é a CSP do 13.3 que reduz esse risco.
+- **Critério de aceite**: primeiro acesso gera par único; acessos seguintes reutilizam. ✅ **19 testes** em `tests/keys.test.js`.
+
+### 4.2 Persistir as chaves localmente (`keystore.js`) ✅
+- `CryptoKey` guardado **diretamente** no IndexedDB, sem passar por JWK. Confirmado no ambiente de teste antes de implementar: `structuredClone` de `CryptoKey` e gravação no `fake-indexeddb` funcionam, e a chave lida ainda deriva bits.
+- Nunca `localStorage`.
+- API: `loadKeyPair()`, `saveKeyPair(pair)`, `hasKeyPair()`, `deleteKeyPair()`, mais `closeDatabase()` para desfazer a conexão memoizada.
+- A conexão é memoizada, com `onversionchange` fechando e limpando o cache — sem isso, uma aba que abrisse versão nova do banco travaria a outra.
+- `loadKeyPair()` valida o que leu: conteúdo corrompido vira erro explícito com instrução de restaurar o backup, em vez de um `TypeError` mais adiante.
+- **Critério de aceite**: ao recarregar a página, a chave privada é recuperada sem gerar uma nova. ✅ **15 testes** em `tests/keystore.test.js`.
+
+**Ajuste no `environment.js`.** Ele usava `window.isSecureContext` e `window.crypto`. Trocado por `globalThis`: equivalente no navegador, **funciona em Web Worker** (onde `window` não existe) e torna o módulo testável fora do DOM. O `location` na mensagem de erro passou a ser opcional pelo mesmo motivo.
+
+**Infraestrutura de teste.** `vitest.config.js` com `tests/setup.js`, que carrega `fake-indexeddb/auto` e define `isSecureContext`. Sem isso, nenhum teste que toque em chaves rodaria.
 
 ### 4.3 Endpoints de chave pública (Django)
 > Movido para cá porque o 4.4 depende dele — no backlog anterior estava dois épicos à frente.

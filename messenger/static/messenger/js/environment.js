@@ -8,14 +8,16 @@ export class EnvironmentError extends Error {
 }
 
 export function requireSecureContext() {
-  if (!window.isSecureContext) {
+  if (!globalThis.isSecureContext) {
+    const origin = globalThis.location
+      ? ` Esta página foi aberta em ${location.protocol}//${location.host}.`
+      : "";
     throw new EnvironmentError(
       "HTTPS obrigatório",
-      "O navegador só libera as funções de criptografia em https:// ou localhost. " +
-        `Esta página foi aberta em ${location.protocol}//${location.host}.`
+      "O navegador só libera as funções de criptografia em https:// ou localhost." + origin
     );
   }
-  if (!window.crypto?.subtle) {
+  if (!globalThis.crypto?.subtle) {
     throw new EnvironmentError(
       "Navegador sem suporte",
       "A Web Crypto API não está disponível neste navegador."
@@ -24,7 +26,7 @@ export function requireSecureContext() {
 }
 
 export async function requestPersistentStorage() {
-  if (!navigator.storage?.persist) {
+  if (!globalThis.navigator?.storage?.persist) {
     return false;
   }
   try {
