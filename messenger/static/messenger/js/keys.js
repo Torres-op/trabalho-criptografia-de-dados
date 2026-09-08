@@ -1,5 +1,11 @@
 import { requireSecureContext } from "./environment.js";
-import { hasKeyPair, loadKeyPair, saveKeyPair } from "./keystore.js";
+import {
+  hasKeyPair,
+  loadKeyPair,
+  loadPeer,
+  savePeer,
+  saveKeyPairIfAbsent,
+} from "./keystore.js";
 
 export const CURVE = "P-256";
 export const KEY_USAGES = Object.freeze(["deriveKey", "deriveBits"]);
@@ -20,7 +26,22 @@ export async function generateKeyPair() {
   );
 }
 
+let pending = null;
+
 export async function ensureKeyPair() {
+  if (!pending) {
+    pending = resolveKeyPair().finally(() => {
+      pending = null;
+    });
+  }
+  return pending;
+}
+
+export function forgetPendingKeyPair() {
+  pending = null;
+}
+
+async function resolveKeyPair() {
   requireSecureContext();
 
   const stored = await loadKeyPair();
@@ -28,13 +49,31 @@ export async function ensureKeyPair() {
     return { pair: stored, created: false };
   }
 
-  const pair = await generateKeyPair();
-  await saveKeyPair(pair);
-  return { pair, created: true };
+  const candidate = await generateKeyPair();
+  const { pair, stored: wasStored } = await saveKeyPairIfAbsent(candidate);
+  return { pair, created: wasStored };
 }
 
 export async function hasLocalKeyPair() {
   return hasKeyPair();
+}
+
+export async function loadPeerPublicKey() {
+  const stored = await loadPeer();
+  if (!stored) {
+    return null;
+  }
+  return {
+    publicKey: await importPublicKey(stored.jwk),
+    localUsername: stored.localUsername,
+    peerUsername: stored.peerUsername,
+  };
+}
+
+export async function savePeerPublicKey({ jwk, localUsername, peerUsername }) {
+  validatePublicJwk(jwk);
+  await importPublicKey(jwk);
+  await savePeer({ jwk, localUsername, peerUsername });
 }
 
 export async function exportPublicKey(publicKey) {

@@ -1,4 +1,4 @@
-import { composeMessage, isFakeImplementation } from "./app.js";
+import { composeMessage, isFakeImplementation, openSession } from "./app.js";
 import {
   EnvironmentError,
   requestPersistentStorage,
@@ -18,6 +18,7 @@ const note = document.querySelector("#stats-note");
 const notices = document.querySelector("#notices");
 
 let last = null;
+let session = null;
 
 function start() {
   try {
@@ -33,13 +34,32 @@ function start() {
   textArea.addEventListener("input", updateCounter);
   button.addEventListener("click", generate);
   updateCounter();
-  ui.reportEnvironment(notices, { isFakeImplementation, requestPersistentStorage });
+  openKeys();
+}
+
+async function openKeys() {
+  const messages = await ui.reportEnvironment(notices, {
+    isFakeImplementation,
+    requestPersistentStorage,
+  });
+
+  try {
+    session = await openSession();
+    if (!session.ready) {
+      messages.push(session.reason);
+    }
+  } catch (error) {
+    messages.push(`Não foi possível preparar suas chaves: ${error.message}`);
+  }
+
+  ui.showNotices(notices, messages);
+  updateCounter();
 }
 
 function updateCounter() {
   const n = [...textArea.value].length;
   counter.textContent = `${n.toLocaleString("pt-BR")} caractere${n === 1 ? "" : "s"}`;
-  button.disabled = n === 0;
+  button.disabled = n === 0 || !session?.ready;
 }
 
 async function generate() {
@@ -50,7 +70,7 @@ async function generate() {
   button.textContent = "Gerando...";
 
   try {
-    last = await composeMessage(textArea.value);
+    last = await composeMessage(textArea.value, session?.aesKey);
     ui.downloadFile(last.file, last.name);
     renderStats(last.stats);
     ui.showStatus(

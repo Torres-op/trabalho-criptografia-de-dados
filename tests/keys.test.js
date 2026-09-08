@@ -6,14 +6,18 @@ import {
   KeyError,
   ensureKeyPair,
   exportPublicKey,
+  forgetPendingKeyPair,
   generateKeyPair,
   hasLocalKeyPair,
   importPublicKey,
+  loadPeerPublicKey,
+  savePeerPublicKey,
   validatePublicJwk,
 } from "../messenger/static/messenger/js/keys.js";
 import {
   DATABASE_NAME,
   closeDatabase,
+  loadKeyPair,
 } from "../messenger/static/messenger/js/keystore.js";
 
 function limparBanco() {
@@ -26,7 +30,10 @@ function limparBanco() {
   });
 }
 
-afterEach(limparBanco);
+afterEach(async () => {
+  forgetPendingKeyPair();
+  await limparBanco();
+});
 
 describe("geração do par ECDH (4.1)", () => {
   it("usa a curva P-256 e os usos previstos em D4", async () => {
@@ -169,5 +176,97 @@ describe("validação da JWK recebida", () => {
 
   it("recusa coordenadas que não formam um ponto da curva", async () => {
     await expect(importPublicKey({ ...jwkValida, x: "AAAA" })).rejects.toThrow(KeyError);
+  });
+});
+
+describe("corrida na criação do par (revisão de código)", () => {
+  it("chamadas concorrentes compartilham a mesma promessa em voo", async () => {
+    const resultados = await Promise.all([
+      ensureKeyPair(),
+      ensureKeyPair(),
+      ensureKeyPair(),
+      ensureKeyPair(),
+    ]);
+
+    for (const resultado of resultados) {
+      expect(resultado.pair).toBe(resultados[0].pair);
+    }
+  });
+
+  it("gera um único par para várias chamadas concorrentes", async () => {
+    await Promise.all([ensureKeyPair(), ensureKeyPair(), ensureKeyPair()]);
+    const guardado = await exportPublicKey((await loadKeyPair()).publicKey);
+
+    forgetPendingKeyPair();
+    const depois = await ensureKeyPair();
+
+    expect(depois.created).toBe(false);
+    expect(await exportPublicKey(depois.pair.publicKey)).toEqual(guardado);
+  });
+
+  it("o par devolvido é o que ficou realmente guardado", async () => {
+    const resultados = await Promise.all([ensureKeyPair(), ensureKeyPair()]);
+    const guardado = await exportPublicKey((await loadKeyPair()).publicKey);
+
+    for (const resultado of resultados) {
+      expect(await exportPublicKey(resultado.pair.publicKey)).toEqual(guardado);
+    }
+  });
+
+  it("permite derivar entre o par devolvido e o par guardado", async () => {
+    const { pair } = await ensureKeyPair();
+    const guardado = await loadKeyPair();
+
+    const bits = await crypto.subtle.deriveBits(
+      { name: "ECDH", public: guardado.publicKey },
+      pair.privateKey,
+      256
+    );
+    expect(bits.byteLength).toBe(32);
+  });
+});
+
+describe("chave pública do outro usuário", () => {
+  it("não existe antes da troca de chaves", async () => {
+    expect(await loadPeerPublicKey()).toBeNull();
+  });
+
+  it("guarda e devolve, preservando os usernames", async () => {
+    const outro = await generateKeyPair();
+    const jwk = await exportPublicKey(outro.publicKey);
+    await savePeerPublicKey({ jwk, localUsername: "diretor", peerUsername: "marcio" });
+
+    const lido = await loadPeerPublicKey();
+    expect(lido.localUsername).toBe("diretor");
+    expect(lido.peerUsername).toBe("marcio");
+    expect(await exportPublicKey(lido.publicKey)).toEqual(jwk);
+  });
+
+  it("recusa JWK inválida na gravação", async () => {
+    await expect(
+      savePeerPublicKey({
+        jwk: { kty: "RSA" },
+        localUsername: "diretor",
+        peerUsername: "marcio",
+      })
+    ).rejects.toThrow(KeyError);
+  });
+
+  it("permite derivar a chave compartilhada depois de guardada", async () => {
+    const outro = await generateKeyPair();
+    await savePeerPublicKey({
+      jwk: await exportPublicKey(outro.publicKey),
+      localUsername: "diretor",
+      peerUsername: "marcio",
+    });
+
+    const { pair } = await ensureKeyPair();
+    const lido = await loadPeerPublicKey();
+    const bits = await crypto.subtle.deriveBits(
+      { name: "ECDH", public: lido.publicKey },
+      pair.privateKey,
+      256
+    );
+    expect(bits.byteLength).toBe(32);
   });
 });

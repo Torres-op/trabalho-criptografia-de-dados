@@ -1,4 +1,4 @@
-import { isFakeImplementation, readMessage } from "./app.js";
+import { isFakeImplementation, openSession, readMessage } from "./app.js";
 import {
   EnvironmentError,
   requestPersistentStorage,
@@ -14,6 +14,8 @@ const output = document.querySelector("#output");
 const meta = document.querySelector("#meta");
 const notices = document.querySelector("#notices");
 
+let session = null;
+
 function start() {
   try {
     requireSecureContext();
@@ -25,7 +27,7 @@ function start() {
     throw error;
   }
 
-  ui.reportEnvironment(notices, { isFakeImplementation, requestPersistentStorage });
+  openKeys();
 
   dropzone.addEventListener("click", () => input.click());
   dropzone.addEventListener("keydown", (event) => {
@@ -60,13 +62,31 @@ function start() {
   });
 }
 
+async function openKeys() {
+  const messages = await ui.reportEnvironment(notices, {
+    isFakeImplementation,
+    requestPersistentStorage,
+  });
+
+  try {
+    session = await openSession();
+    if (!session.ready) {
+      messages.push(session.reason);
+    }
+  } catch (error) {
+    messages.push(`Não foi possível preparar suas chaves: ${error.message}`);
+  }
+
+  ui.showNotices(notices, messages);
+}
+
 async function process(file) {
   ui.clearStatus(status);
   result.hidden = true;
 
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const message = await readMessage(bytes);
+    const message = await readMessage(bytes, session?.aesKey);
 
     output.textContent = message.text;
     meta.textContent =

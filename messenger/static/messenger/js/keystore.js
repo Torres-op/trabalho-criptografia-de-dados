@@ -1,8 +1,11 @@
 export const DATABASE_NAME = "msgenc";
 export const DATABASE_VERSION = 1;
 export const STORE_NAME = "keys";
+export const CURVE = "P-256";
 
 const LOCAL_KEY_PAIR = "local-key-pair";
+const PEER_PUBLIC_KEY = "peer-public-key";
+const REQUIRED_PRIVATE_USAGES = Object.freeze(["deriveBits", "deriveKey"]);
 
 export class KeystoreError extends Error {
   constructor(message) {
@@ -83,15 +86,37 @@ function run(mode, operation) {
   );
 }
 
-function isKeyPair(value) {
+function isEcdhKey(value, type) {
+  return (
+    typeof CryptoKey === "function" &&
+    value instanceof CryptoKey &&
+    value.type === type &&
+    value.algorithm?.name === "ECDH" &&
+    value.algorithm?.namedCurve === CURVE
+  );
+}
+
+function isPeerRecord(value) {
   return (
     value !== null &&
     typeof value === "object" &&
-    typeof value.privateKey === "object" &&
-    typeof value.publicKey === "object" &&
-    value.privateKey?.type === "private" &&
-    value.publicKey?.type === "public"
+    value.jwk !== null &&
+    typeof value.jwk === "object" &&
+    typeof value.localUsername === "string" &&
+    value.localUsername.length > 0 &&
+    typeof value.peerUsername === "string" &&
+    value.peerUsername.length > 0
   );
+}
+
+function isKeyPair(value) {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  if (!isEcdhKey(value.privateKey, "private") || !isEcdhKey(value.publicKey, "public")) {
+    return false;
+  }
+  return REQUIRED_PRIVATE_USAGES.every((usage) => value.privateKey.usages.includes(usage));
 }
 
 export async function loadKeyPair() {
@@ -114,6 +139,36 @@ export async function saveKeyPair(pair) {
   await run("readwrite", (store) => store.put(pair, LOCAL_KEY_PAIR));
 }
 
+export async function saveKeyPairIfAbsent(pair) {
+  if (!isKeyPair(pair)) {
+    throw new KeystoreError("Par de chaves inválido.");
+  }
+
+  const database = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+    const existing = store.get(LOCAL_KEY_PAIR);
+    let winner = null;
+
+    existing.onsuccess = () => {
+      if (isKeyPair(existing.result)) {
+        winner = { pair: existing.result, stored: false };
+      } else {
+        store.put(pair, LOCAL_KEY_PAIR);
+        winner = { pair, stored: true };
+      }
+    };
+
+    transaction.oncomplete = () => resolve(winner);
+    transaction.onabort = () =>
+      reject(new KeystoreError("A gravação do par de chaves foi cancelada."));
+    transaction.onerror = () =>
+      reject(new KeystoreError("Falha ao gravar o par de chaves."));
+  });
+}
+
 export async function hasKeyPair() {
   const total = await run("readonly", (store) => store.count(LOCAL_KEY_PAIR));
   return total > 0;
@@ -121,6 +176,30 @@ export async function hasKeyPair() {
 
 export async function deleteKeyPair() {
   await run("readwrite", (store) => store.delete(LOCAL_KEY_PAIR));
+}
+
+export async function loadPeer() {
+  const stored = await run("readonly", (store) => store.get(PEER_PUBLIC_KEY));
+  if (stored === undefined) {
+    return null;
+  }
+  if (!isPeerRecord(stored)) {
+    throw new KeystoreError(
+      "O registro da chave do outro usuário está corrompido. Refaça a troca de chaves."
+    );
+  }
+  return stored;
+}
+
+export async function savePeer(record) {
+  if (!isPeerRecord(record)) {
+    throw new KeystoreError("Registro de chave do outro usuário inválido.");
+  }
+  await run("readwrite", (store) => store.put(record, PEER_PUBLIC_KEY));
+}
+
+export async function deletePeer() {
+  await run("readwrite", (store) => store.delete(PEER_PUBLIC_KEY));
 }
 
 export function closeDatabase() {

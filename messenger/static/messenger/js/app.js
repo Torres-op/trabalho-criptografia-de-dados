@@ -1,11 +1,37 @@
 import * as cipher from "./crypto.js";
 import * as format from "./format.js";
 import * as huffman from "./huffman.js";
+import { ensureKeyPair, loadPeerPublicKey } from "./keys.js";
 
 export const SENDER_ID = 0;
 
 export function isFakeImplementation() {
   return Boolean(huffman.FAKE_IMPLEMENTATION || cipher.FAKE_IMPLEMENTATION);
+}
+
+export async function openSession() {
+  const { pair, created } = await ensureKeyPair();
+  const peer = await loadPeerPublicKey();
+
+  if (!peer) {
+    return {
+      ready: false,
+      localKeyCreated: created,
+      reason:
+        "Sua chave local está pronta, mas ainda não há a chave pública do outro " +
+        "usuário. Enquanto a troca de chaves não for feita, não é possível cifrar " +
+        "nem decifrar mensagens.",
+    };
+  }
+
+  const aesKey = await cipher.deriveKey(
+    pair.privateKey,
+    peer.publicKey,
+    peer.localUsername,
+    peer.peerUsername
+  );
+
+  return { ready: true, localKeyCreated: created, aesKey };
 }
 
 export async function composeMessage(text, aesKey = null) {

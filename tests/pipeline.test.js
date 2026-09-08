@@ -1,14 +1,26 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   SENDER_ID,
   composeMessage,
   isFakeImplementation,
+  openSession,
   readMessage,
 } from "../messenger/static/messenger/js/app.js";
 import { deriveKey } from "../messenger/static/messenger/js/crypto.js";
 import { HEADER_SIZE, TAG_SIZE, unpack } from "../messenger/static/messenger/js/format.js";
-import { generateKeyPair } from "../messenger/static/messenger/js/keys.js";
+import {
+  ensureKeyPair,
+  exportPublicKey,
+  forgetPendingKeyPair,
+  generateKeyPair,
+  hasLocalKeyPair,
+  savePeerPublicKey,
+} from "../messenger/static/messenger/js/keys.js";
+import {
+  DATABASE_NAME,
+  closeDatabase,
+} from "../messenger/static/messenger/js/keystore.js";
 
 const TEXTOS = {
   "texto simples": "Ola, mundo!",
@@ -108,5 +120,67 @@ describe("entradas inválidas", () => {
 describe("estado da implementação", () => {
   it("não sinaliza mais implementação falsa: Huffman e cifragem são reais", () => {
     expect(isFakeImplementation()).toBe(false);
+  });
+});
+
+describe("estado da sessão (revisão de código)", () => {
+  afterEach(async () => {
+    forgetPendingKeyPair();
+    closeDatabase();
+    await new Promise((resolve) => {
+      const request = indexedDB.deleteDatabase(DATABASE_NAME);
+      request.onsuccess = resolve;
+      request.onerror = resolve;
+      request.onblocked = resolve;
+    });
+  });
+
+  it("prepara a chave local mesmo sem a chave do outro usuário", async () => {
+    const sessao = await openSession();
+
+    expect(sessao.ready).toBe(false);
+    expect(sessao.localKeyCreated).toBe(true);
+    expect(sessao.aesKey).toBeUndefined();
+    expect(await hasLocalKeyPair()).toBe(true);
+  });
+
+  it("explica o que falta em vez de deixar a tela falhar no clique", async () => {
+    const sessao = await openSession();
+    expect(sessao.reason).toMatch(/chave pública do outro/);
+  });
+
+  it("fica pronta assim que a chave do outro usuário chega", async () => {
+    const outro = await generateKeyPair();
+    await savePeerPublicKey({
+      jwk: await exportPublicKey(outro.publicKey),
+      localUsername: "diretor",
+      peerUsername: "marcio",
+    });
+
+    const sessao = await openSession();
+    expect(sessao.ready).toBe(true);
+    expect(sessao.aesKey.algorithm.name).toBe("AES-GCM");
+  });
+
+  it("a chave da sessão cifra e o outro lado decifra", async () => {
+    const outro = await generateKeyPair();
+    await savePeerPublicKey({
+      jwk: await exportPublicKey(outro.publicKey),
+      localUsername: "diretor",
+      peerUsername: "marcio",
+    });
+
+    const sessao = await openSession();
+    const local = await ensureKeyPair();
+    const chaveDoOutro = await deriveKey(
+      outro.privateKey,
+      local.pair.publicKey,
+      "diretor",
+      "marcio"
+    );
+
+    const texto = "Mensagem pela sessão do app.";
+    const { file } = await composeMessage(texto, sessao.aesKey);
+    expect((await readMessage(file, chaveDoOutro)).text).toBe(texto);
   });
 });
