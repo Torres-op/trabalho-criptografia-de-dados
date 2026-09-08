@@ -1,7 +1,13 @@
-import { composeMessage, isFakeImplementation } from "./app.js";
-import { EnvironmentError, requireSecureContext } from "./environment.js";
-import { HEADER_SIZE } from "./format.js";
+import { composeMessage, isFakeImplementation, openSession } from "./app.js";
+import {
+  EnvironmentError,
+  requestPersistentStorage,
+  requireSecureContext,
+} from "./environment.js";
+import { HEADER_SIZE, TAG_SIZE } from "./format.js";
 import * as ui from "./ui.js";
+
+const ENVELOPE_SIZE = HEADER_SIZE + TAG_SIZE;
 
 const textArea = document.querySelector("#text");
 const button = document.querySelector("#generate");
@@ -9,9 +15,10 @@ const counter = document.querySelector("#counter");
 const status = document.querySelector("#status");
 const statsPanel = document.querySelector("#stats");
 const note = document.querySelector("#stats-note");
-const warning = document.querySelector("#fake-warning");
+const notices = document.querySelector("#notices");
 
 let last = null;
+let session = null;
 
 function start() {
   try {
@@ -24,19 +31,35 @@ function start() {
     throw error;
   }
 
-  if (isFakeImplementation()) {
-    ui.showFakeWarning(warning);
-  }
-
   textArea.addEventListener("input", updateCounter);
   button.addEventListener("click", generate);
+  updateCounter();
+  openKeys();
+}
+
+async function openKeys() {
+  const messages = await ui.reportEnvironment(notices, {
+    isFakeImplementation,
+    requestPersistentStorage,
+  });
+
+  try {
+    session = await openSession();
+    if (!session.ready) {
+      messages.push(session.reason);
+    }
+  } catch (error) {
+    messages.push(`Não foi possível preparar suas chaves: ${error.message}`);
+  }
+
+  ui.showNotices(notices, messages);
   updateCounter();
 }
 
 function updateCounter() {
   const n = [...textArea.value].length;
   counter.textContent = `${n.toLocaleString("pt-BR")} caractere${n === 1 ? "" : "s"}`;
-  button.disabled = n === 0;
+  button.disabled = n === 0 || !session?.ready;
 }
 
 async function generate() {
@@ -47,7 +70,7 @@ async function generate() {
   button.textContent = "Gerando...";
 
   try {
-    last = await composeMessage(textArea.value);
+    last = await composeMessage(textArea.value, session?.aesKey);
     ui.downloadFile(last.file, last.name);
     renderStats(last.stats);
     ui.showStatus(
@@ -103,9 +126,10 @@ function renderStats(stats) {
   note.hidden = !grew;
   if (grew) {
     note.textContent =
-      `O arquivo carrega ${HEADER_SIZE} bytes fixos de cabeçalho — formato, versão, ` +
-      "remetente, data e vetor de inicialização. Em mensagens curtas esse custo " +
-      "supera o ganho da compressão; a partir de umas poucas centenas de " +
+      `O arquivo carrega ${ENVELOPE_SIZE} bytes fixos: ${HEADER_SIZE} de cabeçalho ` +
+      `— formato, versão, remetente, data e vetor de inicialização — mais ${TAG_SIZE} ` +
+      "da assinatura que detecta adulteração. Esse custo não cresce com a mensagem, " +
+      "então em textos curtos ele supera o ganho da compressão; por volta de 100 " +
       "caracteres o arquivo já sai menor que o texto original.";
   }
 }

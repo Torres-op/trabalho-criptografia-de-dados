@@ -521,27 +521,41 @@ Compressão
   Bits por caractere   4,94 · UTF-8 usaria 8,38
 ```
 
-> **O painel expôs um comportamento que precisava de explicação.** Em mensagens curtas o *arquivo* cresce — "Chego às 19h" vira 40 B a partir de 13 B, +207,7% — porque o cabeçalho do D5 tem 27 bytes fixos. Sem contexto, o número parece defeito.
+> **O painel expôs um comportamento que precisava de explicação.** Em mensagens curtas o *arquivo* cresce — "Chego às 19h" vira 56 B a partir de 13 B — porque o envelope tem tamanho fixo. Sem contexto, o número parece defeito.
 >
-> A tela passou a exibir uma nota quando isso acontece, explicando que o cabeçalho é custo fixo e que a partir de algumas centenas de caracteres o arquivo já sai menor que o texto original. Dois testes travam os dois lados desse ponto de equilíbrio.
+> A tela exibe uma nota quando isso acontece, explicando que o custo é fixo e não cresce com a mensagem. Quatro testes travam o ponto de equilíbrio.
+
+> **Nota corrigida no Épico 4.** Ela dizia "27 bytes fixos de cabeçalho", número correto enquanto a cifragem era XOR. Com o AES-GCM real entra a tag de autenticação de 16 bytes, e o custo fixo passou a **43 bytes**. A nota agora discrimina as duas parcelas, e o texto e os testes usam `HEADER_SIZE + TAG_SIZE` em vez de números soltos — foi o valor cravado no código que deixou a documentação envelhecer sem avisar.
+>
+> **Ponto de equilíbrio medido: 96 caracteres.** Abaixo disso o arquivo sai maior que o texto; acima, menor. A nota diz "por volta de 100 caracteres", e há teste garantindo que o valor real fica entre 60 e 140 — se o formato mudar de tamanho, a suíte acusa que a frase da tela ficou mentirosa.
 
 ---
 
-## Épico 4 — Chaves e Cifragem (JS, Web Crypto API)
+## Épico 4 — Chaves e Cifragem (JS, Web Crypto API) — parcial
 
 > Ver **D4** para os parâmetros exatos de derivação, **D10** para o requisito de contexto seguro e **D11** para a estratégia de recuperação da chave.
 
-### 4.1 Gerar par de chaves ECDH no navegador
-- `crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"])`.
-- Executar **apenas** se ainda não existir chave no IndexedDB.
-- Chamar `requireSecureContext()` (1.8) antes de qualquer operação criptográfica, em vez de quebrar com `undefined`.
-- **Critério de aceite**: primeiro acesso de cada usuário gera um par único; acessos seguintes reutilizam o mesmo par.
+### 4.1 Gerar par de chaves ECDH no navegador ✅
+> Implementado em `keys.js`, módulo novo. A separação é deliberada: `keystore.js` cuida só de persistência e não sabe nada de criptografia; `keys.js` cuida do ciclo de vida das chaves e usa o keystore. Os itens 4.4 e 11.1 vão acrescentar cache da chave do outro e fingerprint sem misturar as duas responsabilidades.
 
-### 4.2 Persistir as chaves localmente (`keystore.js`)
-- Salvar o `CryptoKey` diretamente no IndexedDB (a estrutura é serializável pelo structured clone — não precisa exportar para JWK).
-- Nunca usar `localStorage` (mais exposto a XSS).
-- API do módulo: `loadKeyPair()`, `saveKeyPair(pair)`, `hasKeyPair()`, `deleteKeyPair()`.
-- **Critério de aceite**: ao recarregar a página, a chave privada é recuperada sem gerar uma nova.
+- `generateKeyPair()` → `crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"])`.
+- `ensureKeyPair()` → devolve `{ pair, created }`; só gera se o keystore estiver vazio.
+- `requireSecureContext()` (1.8) chamado antes de qualquer operação.
+- `exportPublicKey()`, `importPublicKey()` e `validatePublicJwk()` já entram aqui, prontos para o 4.3 e o 4.4. A exportação devolve **apenas** `kty`, `crv`, `x`, `y` — nunca o `d`, que é o segredo.
+- **Chave privada extraível (`extractable: true`)** — exigência da camada 2 de D11: sem isso não há como exportar o backup `.msgkey` (11.3). O custo é que um XSS com acesso ao IndexedDB consegue exfiltrar a chave; é a CSP do 13.3 que reduz esse risco.
+- **Critério de aceite**: primeiro acesso gera par único; acessos seguintes reutilizam. ✅ **19 testes** em `tests/keys.test.js`.
+
+### 4.2 Persistir as chaves localmente (`keystore.js`) ✅
+- `CryptoKey` guardado **diretamente** no IndexedDB, sem passar por JWK. Confirmado no ambiente de teste antes de implementar: `structuredClone` de `CryptoKey` e gravação no `fake-indexeddb` funcionam, e a chave lida ainda deriva bits.
+- Nunca `localStorage`.
+- API: `loadKeyPair()`, `saveKeyPair(pair)`, `hasKeyPair()`, `deleteKeyPair()`, mais `closeDatabase()` para desfazer a conexão memoizada.
+- A conexão é memoizada, com `onversionchange` fechando e limpando o cache — sem isso, uma aba que abrisse versão nova do banco travaria a outra.
+- `loadKeyPair()` valida o que leu: conteúdo corrompido vira erro explícito com instrução de restaurar o backup, em vez de um `TypeError` mais adiante.
+- **Critério de aceite**: ao recarregar a página, a chave privada é recuperada sem gerar uma nova. ✅ **15 testes** em `tests/keystore.test.js`.
+
+**Ajuste no `environment.js`.** Ele usava `window.isSecureContext` e `window.crypto`. Trocado por `globalThis`: equivalente no navegador, **funciona em Web Worker** (onde `window` não existe) e torna o módulo testável fora do DOM. O `location` na mensagem de erro passou a ser opcional pelo mesmo motivo.
+
+**Infraestrutura de teste.** `vitest.config.js` com `tests/setup.js`, que carrega `fake-indexeddb/auto` e define `isSecureContext`. Sem isso, nenhum teste que toque em chaves rodaria.
 
 ### 4.3 Endpoints de chave pública (Django)
 > Movido para cá porque o 4.4 depende dele — no backlog anterior estava dois épicos à frente.
@@ -558,7 +572,7 @@ Compressão
 - Cachear a chave pública do outro no IndexedDB, para não depender do servidor a cada operação.
 - **Critério de aceite**: chave pública aparece no Django Admin após o primeiro login de cada usuário.
 
-### 4.5 Derivar o segredo compartilhado
+### 4.5 Derivar o segredo compartilhado ✅
 Implementar exatamente conforme **D4**:
 ```js
 const segredo   = await crypto.subtle.deriveBits({ name: "ECDH", public: pubDoOutro }, privLocal, 256);
@@ -573,28 +587,42 @@ const aesKey  = await crypto.subtle.deriveKey(
 ```
 - `salt` e `info` construídos como especificado em D4.
 - A chave derivada é marcada como **não extraível**.
-- **Critério de aceite**: os dois usuários, independentemente, derivam a mesma chave — validado por um teste que simula os dois lados e compara um ciphertext cruzado (A cifra, B decifra).
+- **Critério de aceite**: os dois usuários, independentemente, derivam a mesma chave — validado por teste que simula os dois lados com ciphertext cruzado. ✅ **29 testes** em `tests/crypto.test.js`.
 
-### 4.6 Implementar `encrypt(bytes, aesKey, aad)`
+**Detalhes fixados na implementação, que D4 deixava em aberto:**
+
+- **"Ordem alfabética" virou ordem de unidades de código** (`a < b`), não `localeCompare`. A comparação por locale depende de configuração do ambiente e poderia ordenar a mesma dupla de nomes de forma diferente em máquinas diferentes — os dois lados derivariam chaves distintas e nada decifraria, sem erro visível. Há teste travando isso (`"Zoe"` antes de `"ana"`).
+- **O separador `\x00` é uma constante nomeada**, `USERNAME_SEPARATOR = String.fromCharCode(0)`, e não um NUL digitado no meio de um template literal. Um byte de controle literal no código-fonte é invisível no editor, faz o `grep` tratar o arquivo como binário e desaparece silenciosamente numa edição descuidada.
+- O separador NUL não é decorativo: sem ele, as duplas `("ana", "luiza-silva")` e `("ana-luiza", "silva")` produziriam o mesmo material de salt. Há teste cobrindo essa colisão.
+- `orderUsernames()` recusa nomes iguais ou vazios, em vez de derivar uma chave sem sentido.
+- `deriveKey()` valida o papel de cada chave: passar a pública no lugar da privada, ou vice-versa, dá erro nomeado em vez de falha obscura da Web Crypto.
+
+### 4.6 Implementar `encrypt(bytes, aesKey, aad)` ✅
 - IV aleatório de 96 bits com `crypto.getRandomValues` — **único por mensagem**.
 - `crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, aesKey, bytes)`.
 - Retornar `{ iv, ciphertext }` (a tag de 16 bytes já vem embutida no ciphertext).
 - **Critério de aceite**: cifrar o mesmo texto duas vezes gera IVs e ciphertexts diferentes.
 
-### 4.7 Implementar `decrypt(iv, ciphertext, aesKey, aad)`
+### 4.7 Implementar `decrypt(iv, ciphertext, aesKey, aad)` ✅
 - `crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: aad }, aesKey, ciphertext)`.
 - Capturar a falha de verificação de autenticidade e traduzir para um erro tipado do app (`AuthenticationError`), não deixar vazar o `OperationError` cru da Web Crypto.
 - **Critério de aceite**: alterar 1 byte do ciphertext, do IV **ou do AAD** faz a função lançar `AuthenticationError`.
 
-### 4.8 Testes do módulo de cifragem
+### 4.8 Testes do módulo de cifragem ✅
 - Round-trip com textos variados e com payload vazio.
 - Rejeição de ciphertext adulterado (1 bit trocado).
 - Rejeição de IV incorreto.
 - **Rejeição de AAD adulterado** — cobre a proteção do cabeçalho (D5).
-- Rejeição com chave derivada de um `info` diferente.
-- **Critério de aceite**: todos os casos de adulteração lançam erro; nenhum decodifica silenciosamente para lixo.
+- Rejeição com chave derivada de outra dupla de usernames e com par de chaves de terceiro.
+- **Critério de aceite**: todos os casos de adulteração lançam erro; nenhum decodifica silenciosamente para lixo. ✅
 
-### 4.9 Solicitar armazenamento persistente
+> **O último `FAKE_IMPLEMENTATION` saiu.** `isFakeImplementation()` agora devolve `false` e o aviso permanente da interface desapareceu — Huffman e cifragem são reais.
+>
+> **O app ainda não fecha o fluxo ponta a ponta**, porque nada popula a chave pública do outro usuário: isso é o 4.4, que depende do Épico 2. Até lá, compor uma mensagem devolve a mensagem prevista em 9.5 — *"Ainda não foi feita a troca de chaves com o outro usuário."* Os 29 testes provam que o módulo funciona; falta apenas a origem da chave do outro lado.
+>
+> **Custo fixo do arquivo subiu para 43 bytes** — 27 do cabeçalho D5 mais 16 da tag GCM. Uma mensagem de 114 B agora gera arquivo de 113 B (−0,9%), contra os 97 B da versão com XOR. O ponto de equilíbrio da nota exibida no painel de compressão (3.6) precisa ser reconferido.
+
+### 4.9 Solicitar armazenamento persistente ✅
 Por padrão, o navegador pode limpar o IndexedDB sozinho sob pressão de disco — e junto vai a chave privada. Uma chamada reduz bastante esse risco:
 
 ```js
@@ -607,7 +635,13 @@ if (navigator.storage?.persist) {
 - Chamar no boot, logo após `requireSecureContext()`.
 - **Não tentar detectar aba anônima** — as heurísticas para isso são frágeis e quebram a cada versão de navegador. O retorno `false` desta chamada já é o sinal confiável: qualquer que seja o motivo (aba anônima, configuração restritiva, pouco espaço), o armazenamento é volátil e o app deve insistir no backup.
 - Registrar o resultado no indicador de estado criptográfico (12.4).
-- **Critério de aceite**: o resultado da chamada fica visível na interface; quando `false`, o app exibe aviso e destaca a ação de backup.
+- **Critério de aceite**: o resultado da chamada fica visível na interface; quando `false`, o app exibe aviso. ✅ **10 testes** em `tests/environment.test.js`, que até então não tinha nenhum — cobrem também a guarda do 1.8.
+
+**Faixa de avisos unificada.** O elemento `#fake-warning`, que existia só para sinalizar a cripto falsa do Épico 0, virou `#notices` e passou a acomodar vários avisos numa lista. Hoje ele carrega dois: implementação provisória (que já não dispara) e armazenamento volátil. Quando o 12.4 chegar, o indicador de estado criptográfico entra no mesmo lugar em vez de criar outro.
+
+`ui.reportEnvironment(target, checks)` recebe as verificações por parâmetro em vez de importá-las, o que a torna testável sem DOM e sem mexer em globais.
+
+> O aviso de armazenamento volátil ainda **não** aponta para a ação de backup, porque o 11.3 não existe. Quando existir, a mensagem ganha o link — anotado como pendência do Épico 11.
 
 ---
 

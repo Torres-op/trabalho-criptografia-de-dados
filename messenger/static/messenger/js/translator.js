@@ -1,5 +1,9 @@
-import { isFakeImplementation, readMessage } from "./app.js";
-import { EnvironmentError, requireSecureContext } from "./environment.js";
+import { isFakeImplementation, openSession, readMessage } from "./app.js";
+import {
+  EnvironmentError,
+  requestPersistentStorage,
+  requireSecureContext,
+} from "./environment.js";
 import * as ui from "./ui.js";
 
 const dropzone = document.querySelector("#dropzone");
@@ -8,7 +12,9 @@ const status = document.querySelector("#status");
 const result = document.querySelector("#result");
 const output = document.querySelector("#output");
 const meta = document.querySelector("#meta");
-const warning = document.querySelector("#fake-warning");
+const notices = document.querySelector("#notices");
+
+let session = null;
 
 function start() {
   try {
@@ -21,9 +27,7 @@ function start() {
     throw error;
   }
 
-  if (isFakeImplementation()) {
-    ui.showFakeWarning(warning);
-  }
+  openKeys();
 
   dropzone.addEventListener("click", () => input.click());
   dropzone.addEventListener("keydown", (event) => {
@@ -58,13 +62,31 @@ function start() {
   });
 }
 
+async function openKeys() {
+  const messages = await ui.reportEnvironment(notices, {
+    isFakeImplementation,
+    requestPersistentStorage,
+  });
+
+  try {
+    session = await openSession();
+    if (!session.ready) {
+      messages.push(session.reason);
+    }
+  } catch (error) {
+    messages.push(`Não foi possível preparar suas chaves: ${error.message}`);
+  }
+
+  ui.showNotices(notices, messages);
+}
+
 async function process(file) {
   ui.clearStatus(status);
   result.hidden = true;
 
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const message = await readMessage(bytes);
+    const message = await readMessage(bytes, session?.aesKey);
 
     output.textContent = message.text;
     meta.textContent =

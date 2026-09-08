@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { HEADER_SIZE, TAG_SIZE } from "../messenger/static/messenger/js/format.js";
 import {
   HuffmanError,
   decode,
@@ -170,19 +171,43 @@ describe("estatísticas (3.6)", () => {
 });
 
 describe("ponto de equilíbrio do arquivo", () => {
-  const HEADER_SIZE = 27;
+  const ENVELOPE = HEADER_SIZE + TAG_SIZE;
+  const tamanhoDoArquivo = (texto) => encode(texto).bytes.length + ENVELOPE;
+  const tamanhoOriginal = (texto) => new TextEncoder().encode(texto).length;
 
-  it("compensa o cabeçalho a partir de algumas centenas de caracteres", () => {
-    const { bytes } = encode(PARAGRAFO);
-    const originais = new TextEncoder().encode(PARAGRAFO).length;
-    expect(bytes.length + HEADER_SIZE).toBeLessThan(originais);
+  it("soma 43 bytes fixos: cabeçalho do D5 mais a tag do AES-GCM", () => {
+    expect(HEADER_SIZE).toBe(27);
+    expect(TAG_SIZE).toBe(16);
+    expect(ENVELOPE).toBe(43);
   });
 
-  it("não compensa o cabeçalho em mensagem curta", () => {
+  it("compensa o envelope num parágrafo", () => {
+    expect(tamanhoDoArquivo(PARAGRAFO)).toBeLessThan(tamanhoOriginal(PARAGRAFO));
+  });
+
+  it("não compensa o envelope em mensagem curta", () => {
     const curta = "Chego às 19h";
-    const { bytes } = encode(curta);
-    const originais = new TextEncoder().encode(curta).length;
-    expect(bytes.length + HEADER_SIZE).toBeGreaterThan(originais);
+    expect(tamanhoDoArquivo(curta)).toBeGreaterThan(tamanhoOriginal(curta));
+  });
+
+  it("vira a favor do arquivo por volta de 100 caracteres, como diz a nota da tela", () => {
+    const base =
+      "Precisamos revisar a apresentação antes da reunião de amanhã à tarde, " +
+      "com calma e atenção aos detalhes que ficaram pendentes. ";
+    const longo = base.repeat(4);
+
+    let equilibrio = null;
+    for (let n = 10; n <= longo.length; n++) {
+      const texto = longo.slice(0, n);
+      if (tamanhoDoArquivo(texto) < tamanhoOriginal(texto)) {
+        equilibrio = n;
+        break;
+      }
+    }
+
+    expect(equilibrio).not.toBeNull();
+    expect(equilibrio).toBeGreaterThan(60);
+    expect(equilibrio).toBeLessThan(140);
   });
 });
 

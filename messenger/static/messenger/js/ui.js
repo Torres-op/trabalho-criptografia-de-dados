@@ -10,11 +10,45 @@ export function blockPage(title, detail) {
   document.body.append(box);
 }
 
-export function showFakeWarning(target) {
-  target.hidden = false;
-  target.textContent =
-    "Criptografia e compressão ainda são implementações falsas do Épico 0. " +
-    "Nenhuma mensagem gerada aqui é segura.";
+export function showNotices(target, messages) {
+  target.innerHTML = "";
+  target.hidden = messages.length === 0;
+  if (messages.length === 0) {
+    return;
+  }
+  if (messages.length === 1) {
+    target.textContent = messages[0];
+    return;
+  }
+  const list = document.createElement("ul");
+  for (const message of messages) {
+    const item = document.createElement("li");
+    item.textContent = message;
+    list.append(item);
+  }
+  target.append(list);
+}
+
+export async function reportEnvironment(target, checks) {
+  const messages = [];
+
+  if (checks.isFakeImplementation()) {
+    messages.push(
+      "A compressão ou a cifragem ainda são implementações provisórias. " +
+        "Nenhuma mensagem gerada aqui é segura."
+    );
+  }
+
+  if (!(await checks.requestPersistentStorage())) {
+    messages.push(
+      "O navegador não garantiu armazenamento permanente para este site. " +
+        "Se ele limpar os dados, a chave privada guardada aqui é perdida junto " +
+        "e as mensagens antigas ficam ilegíveis."
+    );
+  }
+
+  showNotices(target, messages);
+  return messages;
 }
 
 export function showStatus(target, kind, title, detail = "") {
