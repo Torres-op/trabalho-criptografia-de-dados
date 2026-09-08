@@ -44,8 +44,10 @@ class MinHeap {
         const left = 2 * i + 1;
         const right = left + 1;
         let smallest = i;
-        if (left < items.length && precedes(items[left], items[smallest])) smallest = left;
-        if (right < items.length && precedes(items[right], items[smallest])) smallest = right;
+        if (left < items.length && precedes(items[left], items[smallest]))
+          smallest = left;
+        if (right < items.length && precedes(items[right], items[smallest]))
+          smallest = right;
         if (smallest === i) break;
         [items[i], items[smallest]] = [items[smallest], items[i]];
         i = smallest;
@@ -63,7 +65,13 @@ function precedes(a, b) {
 function measureCodeLengths(frequencies) {
   const heap = new MinHeap();
   for (let symbol = 0; symbol < frequencies.length; symbol++) {
-    heap.push({ weight: frequencies[symbol], tieKey: symbol, symbol, left: null, right: null });
+    heap.push({
+      weight: frequencies[symbol],
+      tieKey: symbol,
+      symbol,
+      left: null,
+      right: null,
+    });
   }
 
   while (heap.size > 1) {
@@ -78,7 +86,7 @@ function measureCodeLengths(frequencies) {
     });
   }
 
-  const lengths = new Uint8Array(frequencies.length);
+  const lengths = new Array(frequencies.length).fill(0);
   const stack = [{ node: heap.pop(), depth: 0 }];
 
   while (stack.length > 0) {
@@ -96,7 +104,7 @@ function measureCodeLengths(frequencies) {
 
 function assignCanonicalCodes(lengths) {
   const order = [...lengths.keys()].sort(
-    (a, b) => lengths[a] - lengths[b] || a - b
+    (a, b) => lengths[a] - lengths[b] || a - b,
   );
 
   const codes = new Uint32Array(lengths.length);
@@ -137,25 +145,35 @@ function buildDecodeIndex(lengths, codes, order) {
 export function buildCodebook(frequencies) {
   if (frequencies.length !== ALPHABET_SIZE) {
     throw new CodebookError(
-      `A tabela precisa ter ${ALPHABET_SIZE} entradas, recebeu ${frequencies.length}.`
+      `A tabela precisa ter ${ALPHABET_SIZE} entradas, recebeu ${frequencies.length}.`,
     );
   }
+  let total = 0;
   for (let symbol = 0; symbol < frequencies.length; symbol++) {
-    if (!(frequencies[symbol] >= 1)) {
+    const frequency = frequencies[symbol];
+    if (!Number.isInteger(frequency) || frequency < 1) {
       throw new CodebookError(
-        `Frequência inválida no símbolo ${symbol}: ${frequencies[symbol]}. O mínimo é 1.`
+        `Frequência inválida no símbolo ${symbol}: ${frequency}. Esperado inteiro ≥ 1.`,
       );
     }
+    total += frequency;
   }
-
-  const lengths = measureCodeLengths(frequencies);
-  const maxLength = Math.max(...lengths);
-  if (maxLength > MAX_CODE_LENGTH) {
+  if (total > Number.MAX_SAFE_INTEGER) {
     throw new CodebookError(
-      `Código de ${maxLength} bits excede o limite de ${MAX_CODE_LENGTH}.`
+      `Soma das frequências (${total}) passa de ${Number.MAX_SAFE_INTEGER}, ` +
+        "onde a adição deixa de ser exata e a árvore perde o determinismo.",
     );
   }
 
+  const measured = measureCodeLengths(frequencies);
+  const maxLength = Math.max(...measured);
+  if (maxLength > MAX_CODE_LENGTH) {
+    throw new CodebookError(
+      `Código de ${maxLength} bits excede o limite de ${MAX_CODE_LENGTH}.`,
+    );
+  }
+
+  const lengths = Uint8Array.from(measured);
   const { codes, order } = assignCanonicalCodes(lengths);
   const index = buildDecodeIndex(lengths, codes, order);
 

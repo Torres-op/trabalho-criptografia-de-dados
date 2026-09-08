@@ -444,7 +444,15 @@ export function requireSecureContext() {
 - A árvore é usada **apenas para medir os comprimentos** e depois descartada. Os códigos são reatribuídos na forma canônica: símbolos ordenados por (comprimento, índice) recebem valores incrementais.
 - A atribuição usa multiplicação (`code *= 2 ** delta`) em vez de deslocamento à esquerda: `<<` em JavaScript opera em 32 bits com sinal e corromperia códigos longos.
 - Em vez de materializar a árvore para decodificar, o códebook carrega o **índice canônico** (`firstCode`, `firstIndex`, `countByLength`) — decodificação em tempo constante por bit, sem alocar nós.
-- **Critério de aceite**: 100 construções seguidas produzem `lengths` e `codes` idênticos; nenhum comprimento excede 32 bits. **19 testes** em `tests/huffman-codebook.test.js`.
+- **Critério de aceite**: 100 construções seguidas produzem `lengths` e `codes` idênticos; nenhum comprimento excede 32 bits. **35 testes** em `tests/huffman-codebook.test.js`.
+
+**Endurecimento da validação de entrada** (revisão de código posterior). `buildCodebook` é exportado e valida o que recebe, então a validação precisa ser sólida mesmo para entradas que a aplicação nunca produz:
+
+- **Profundidade era medida direto num `Uint8Array`**, antes da checagem de `MAX_CODE_LENGTH`. Uma profundidade de 256 viraria 0 por truncamento, e um códebook inválido passaria pela checagem. Medição passou a usar array comum; a conversão para `Uint8Array` só acontece depois de validar. Na prática a aritmética de ponto flutuante limitava a profundidade a 255 — mas depender disso é segurança acidental, não garantia.
+- **A checagem `frequency >= 1` aceitava strings por coerção.** `"1" >= 1` é verdadeiro, e o valor chegava a `left.weight + right.weight`, onde JavaScript **concatena** em vez de somar: `"1" + "1"` dá `"11"`. A árvore resultante não era a de Huffman para as frequências informadas, e nada acusava. Trocado por `Number.isInteger(frequency) && frequency >= 1`, que rejeita string, `NaN`, `Infinity`, fracionário, `null` e objeto sem precisar de checagem de tipo à parte.
+- **Nova guarda de determinismo:** a soma das frequências precisa caber em `Number.MAX_SAFE_INTEGER`. Acima disso a adição de doubles deixa de ser exata, empates aparecem por arredondamento e a árvore perde a reprodutibilidade que D3 exige. Nenhuma tabela real chega perto — o pior caso com `Uint32Array` é ~1,1×10¹², contra o limite de 9×10¹⁵.
+
+Nenhuma dessas correções altera o códebook real: min 3 / max 20 bits e Kraft = 1, iguais a antes.
 
 **Resultado medido sobre o corpus do 3.1:**
 

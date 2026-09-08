@@ -190,4 +190,79 @@ describe("validação da tabela de entrada", () => {
     const codebook = buildCodebook(tabela);
     expect(codebook.maxLength).toBeLessThanOrEqual(MAX_CODE_LENGTH);
   });
+
+  it("aceita o extremo do Uint32Array", () => {
+    const tabela = uniformTable();
+    tabela[0x20] = 4_294_967_295;
+    expect(() => buildCodebook(tabela)).not.toThrow();
+  });
+});
+
+describe("entradas mal formadas em array comum", () => {
+  const comValor = (valor, posicao = 42) => {
+    const tabela = new Array(ALPHABET_SIZE).fill(1);
+    tabela[posicao] = valor;
+    return tabela;
+  };
+
+  it("recusa string numérica, que a comparação com >= aceitaria por coerção", () => {
+    expect(() => buildCodebook(new Array(ALPHABET_SIZE).fill("1"))).toThrow(CodebookError);
+    expect(() => buildCodebook(comValor("5"))).toThrow(/símbolo 42/);
+  });
+
+  it.each([
+    ["NaN", NaN],
+    ["Infinity", Infinity],
+    ["fracionário", 1.5],
+    ["negativo", -3],
+    ["zero", 0],
+    ["null", null],
+    ["undefined", undefined],
+    ["objeto", {}],
+    ["array", [2]],
+    ["boolean", true],
+  ])("recusa %s", (_rotulo, valor) => {
+    expect(() => buildCodebook(comValor(valor))).toThrow(CodebookError);
+  });
+
+  it("aponta o símbolo culpado na mensagem", () => {
+    expect(() => buildCodebook(comValor(0, 200))).toThrow(/símbolo 200/);
+  });
+});
+
+describe("limites numéricos", () => {
+  it("recusa soma que passa do inteiro seguro, onde a adição deixa de ser exata", () => {
+    const tabela = new Array(ALPHABET_SIZE).fill(1);
+    tabela[0] = Number.MAX_SAFE_INTEGER;
+    expect(() => buildCodebook(tabela)).toThrow(/determinismo/);
+  });
+
+  it("recusa profundidade acima do limite em vez de truncá-la", () => {
+    const tabela = new Array(ALPHABET_SIZE).fill(1);
+    let acumulado = 2;
+    for (let symbol = 2; symbol < ALPHABET_SIZE; symbol++) {
+      tabela[symbol] = Math.min(acumulado + 1, 2 ** 40);
+      acumulado += tabela[symbol];
+    }
+    expect(() => buildCodebook(tabela)).toThrow(/excede o limite de 32/);
+  });
+
+  it("relata a profundidade real, sem passar por Uint8Array antes da checagem", () => {
+    const tabela = new Array(ALPHABET_SIZE).fill(1);
+    let acumulado = 2;
+    for (let symbol = 2; symbol < ALPHABET_SIZE; symbol++) {
+      tabela[symbol] = Math.min(acumulado + 1, 2 ** 40);
+      acumulado += tabela[symbol];
+    }
+
+    let relatada = null;
+    try {
+      buildCodebook(tabela);
+    } catch (erro) {
+      relatada = Number(erro.message.match(/Código de (\d+) bits/)[1]);
+    }
+
+    expect(relatada).toBeGreaterThan(MAX_CODE_LENGTH);
+    expect(relatada).not.toBe(0);
+  });
 });
