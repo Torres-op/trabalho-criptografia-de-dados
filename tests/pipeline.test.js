@@ -7,7 +7,7 @@ import {
   readMessage,
 } from "../messenger/static/messenger/js/app.js";
 import { deriveKey } from "../messenger/static/messenger/js/crypto.js";
-import { unpack } from "../messenger/static/messenger/js/format.js";
+import { HEADER_SIZE, TAG_SIZE, unpack } from "../messenger/static/messenger/js/format.js";
 import { generateKeyPair } from "../messenger/static/messenger/js/keys.js";
 
 const TEXTOS = {
@@ -75,7 +75,7 @@ describe("estatísticas", () => {
     expect(stats.characters).toBe([...texto].length);
     expect(stats.originalBytes).toBe(new TextEncoder().encode(texto).length);
     expect(stats.fileBytes).toBe(file.length);
-    expect(stats.fileBytes).toBe(stats.compressedBytes + 27 + 16);
+    expect(stats.fileBytes).toBe(stats.compressedBytes + HEADER_SIZE + TAG_SIZE);
   });
 });
 

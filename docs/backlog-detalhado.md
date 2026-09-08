@@ -521,13 +521,17 @@ Compressão
   Bits por caractere   4,94 · UTF-8 usaria 8,38
 ```
 
-> **O painel expôs um comportamento que precisava de explicação.** Em mensagens curtas o *arquivo* cresce — "Chego às 19h" vira 40 B a partir de 13 B, +207,7% — porque o cabeçalho do D5 tem 27 bytes fixos. Sem contexto, o número parece defeito.
+> **O painel expôs um comportamento que precisava de explicação.** Em mensagens curtas o *arquivo* cresce — "Chego às 19h" vira 56 B a partir de 13 B — porque o envelope tem tamanho fixo. Sem contexto, o número parece defeito.
 >
-> A tela passou a exibir uma nota quando isso acontece, explicando que o cabeçalho é custo fixo e que a partir de algumas centenas de caracteres o arquivo já sai menor que o texto original. Dois testes travam os dois lados desse ponto de equilíbrio.
+> A tela exibe uma nota quando isso acontece, explicando que o custo é fixo e não cresce com a mensagem. Quatro testes travam o ponto de equilíbrio.
+
+> **Nota corrigida no Épico 4.** Ela dizia "27 bytes fixos de cabeçalho", número correto enquanto a cifragem era XOR. Com o AES-GCM real entra a tag de autenticação de 16 bytes, e o custo fixo passou a **43 bytes**. A nota agora discrimina as duas parcelas, e o texto e os testes usam `HEADER_SIZE + TAG_SIZE` em vez de números soltos — foi o valor cravado no código que deixou a documentação envelhecer sem avisar.
+>
+> **Ponto de equilíbrio medido: 96 caracteres.** Abaixo disso o arquivo sai maior que o texto; acima, menor. A nota diz "por volta de 100 caracteres", e há teste garantindo que o valor real fica entre 60 e 140 — se o formato mudar de tamanho, a suíte acusa que a frase da tela ficou mentirosa.
 
 ---
 
-## Épico 4 — Chaves e Cifragem (JS, Web Crypto API)
+## Épico 4 — Chaves e Cifragem (JS, Web Crypto API) — parcial
 
 > Ver **D4** para os parâmetros exatos de derivação, **D10** para o requisito de contexto seguro e **D11** para a estratégia de recuperação da chave.
 
@@ -618,7 +622,7 @@ const aesKey  = await crypto.subtle.deriveKey(
 >
 > **Custo fixo do arquivo subiu para 43 bytes** — 27 do cabeçalho D5 mais 16 da tag GCM. Uma mensagem de 114 B agora gera arquivo de 113 B (−0,9%), contra os 97 B da versão com XOR. O ponto de equilíbrio da nota exibida no painel de compressão (3.6) precisa ser reconferido.
 
-### 4.9 Solicitar armazenamento persistente
+### 4.9 Solicitar armazenamento persistente ✅
 Por padrão, o navegador pode limpar o IndexedDB sozinho sob pressão de disco — e junto vai a chave privada. Uma chamada reduz bastante esse risco:
 
 ```js
@@ -631,7 +635,13 @@ if (navigator.storage?.persist) {
 - Chamar no boot, logo após `requireSecureContext()`.
 - **Não tentar detectar aba anônima** — as heurísticas para isso são frágeis e quebram a cada versão de navegador. O retorno `false` desta chamada já é o sinal confiável: qualquer que seja o motivo (aba anônima, configuração restritiva, pouco espaço), o armazenamento é volátil e o app deve insistir no backup.
 - Registrar o resultado no indicador de estado criptográfico (12.4).
-- **Critério de aceite**: o resultado da chamada fica visível na interface; quando `false`, o app exibe aviso e destaca a ação de backup.
+- **Critério de aceite**: o resultado da chamada fica visível na interface; quando `false`, o app exibe aviso. ✅ **10 testes** em `tests/environment.test.js`, que até então não tinha nenhum — cobrem também a guarda do 1.8.
+
+**Faixa de avisos unificada.** O elemento `#fake-warning`, que existia só para sinalizar a cripto falsa do Épico 0, virou `#notices` e passou a acomodar vários avisos numa lista. Hoje ele carrega dois: implementação provisória (que já não dispara) e armazenamento volátil. Quando o 12.4 chegar, o indicador de estado criptográfico entra no mesmo lugar em vez de criar outro.
+
+`ui.reportEnvironment(target, checks)` recebe as verificações por parâmetro em vez de importá-las, o que a torna testável sem DOM e sem mexer em globais.
+
+> O aviso de armazenamento volátil ainda **não** aponta para a ação de backup, porque o 11.3 não existe. Quando existir, a mensagem ganha o link — anotado como pendência do Épico 11.
 
 ---
 

@@ -134,11 +134,19 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .status--error { background: var(--error-bg); border-color: var(--error-border); }
 
 .warning {
-  margin: 0;
   padding: 10px 20px;
   background: var(--warning-bg);
   border-bottom: 1px solid var(--warning-border);
   font-size: 0.85rem;
+}
+
+.warning ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.warning li + li {
+  margin-top: 4px;
 }
 
 .stats {

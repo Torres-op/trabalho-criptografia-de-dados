@@ -1,5 +1,9 @@
 import { isFakeImplementation, readMessage } from "./app.js";
-import { EnvironmentError, requireSecureContext } from "./environment.js";
+import {
+  EnvironmentError,
+  requestPersistentStorage,
+  requireSecureContext,
+} from "./environment.js";
 import * as ui from "./ui.js";
 
 const dropzone = document.querySelector("#dropzone");
@@ -8,7 +12,7 @@ const status = document.querySelector("#status");
 const result = document.querySelector("#result");
 const output = document.querySelector("#output");
 const meta = document.querySelector("#meta");
-const warning = document.querySelector("#fake-warning");
+const notices = document.querySelector("#notices");
 
 function start() {
   try {
@@ -21,9 +25,7 @@ function start() {
     throw error;
   }
 
-  if (isFakeImplementation()) {
-    ui.showFakeWarning(warning);
-  }
+  ui.reportEnvironment(notices, { isFakeImplementation, requestPersistentStorage });
 
   dropzone.addEventListener("click", () => input.click());
   dropzone.addEventListener("keydown", (event) => {
