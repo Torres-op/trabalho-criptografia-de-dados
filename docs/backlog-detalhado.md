@@ -568,7 +568,7 @@ Compressão
 - Cachear a chave pública do outro no IndexedDB, para não depender do servidor a cada operação.
 - **Critério de aceite**: chave pública aparece no Django Admin após o primeiro login de cada usuário.
 
-### 4.5 Derivar o segredo compartilhado
+### 4.5 Derivar o segredo compartilhado ✅
 Implementar exatamente conforme **D4**:
 ```js
 const segredo   = await crypto.subtle.deriveBits({ name: "ECDH", public: pubDoOutro }, privLocal, 256);
@@ -583,26 +583,40 @@ const aesKey  = await crypto.subtle.deriveKey(
 ```
 - `salt` e `info` construídos como especificado em D4.
 - A chave derivada é marcada como **não extraível**.
-- **Critério de aceite**: os dois usuários, independentemente, derivam a mesma chave — validado por um teste que simula os dois lados e compara um ciphertext cruzado (A cifra, B decifra).
+- **Critério de aceite**: os dois usuários, independentemente, derivam a mesma chave — validado por teste que simula os dois lados com ciphertext cruzado. ✅ **29 testes** em `tests/crypto.test.js`.
 
-### 4.6 Implementar `encrypt(bytes, aesKey, aad)`
+**Detalhes fixados na implementação, que D4 deixava em aberto:**
+
+- **"Ordem alfabética" virou ordem de unidades de código** (`a < b`), não `localeCompare`. A comparação por locale depende de configuração do ambiente e poderia ordenar a mesma dupla de nomes de forma diferente em máquinas diferentes — os dois lados derivariam chaves distintas e nada decifraria, sem erro visível. Há teste travando isso (`"Zoe"` antes de `"ana"`).
+- **O separador `\x00` é uma constante nomeada**, `USERNAME_SEPARATOR = String.fromCharCode(0)`, e não um NUL digitado no meio de um template literal. Um byte de controle literal no código-fonte é invisível no editor, faz o `grep` tratar o arquivo como binário e desaparece silenciosamente numa edição descuidada.
+- O separador NUL não é decorativo: sem ele, as duplas `("ana", "luiza-silva")` e `("ana-luiza", "silva")` produziriam o mesmo material de salt. Há teste cobrindo essa colisão.
+- `orderUsernames()` recusa nomes iguais ou vazios, em vez de derivar uma chave sem sentido.
+- `deriveKey()` valida o papel de cada chave: passar a pública no lugar da privada, ou vice-versa, dá erro nomeado em vez de falha obscura da Web Crypto.
+
+### 4.6 Implementar `encrypt(bytes, aesKey, aad)` ✅
 - IV aleatório de 96 bits com `crypto.getRandomValues` — **único por mensagem**.
 - `crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, aesKey, bytes)`.
 - Retornar `{ iv, ciphertext }` (a tag de 16 bytes já vem embutida no ciphertext).
 - **Critério de aceite**: cifrar o mesmo texto duas vezes gera IVs e ciphertexts diferentes.
 
-### 4.7 Implementar `decrypt(iv, ciphertext, aesKey, aad)`
+### 4.7 Implementar `decrypt(iv, ciphertext, aesKey, aad)` ✅
 - `crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: aad }, aesKey, ciphertext)`.
 - Capturar a falha de verificação de autenticidade e traduzir para um erro tipado do app (`AuthenticationError`), não deixar vazar o `OperationError` cru da Web Crypto.
 - **Critério de aceite**: alterar 1 byte do ciphertext, do IV **ou do AAD** faz a função lançar `AuthenticationError`.
 
-### 4.8 Testes do módulo de cifragem
+### 4.8 Testes do módulo de cifragem ✅
 - Round-trip com textos variados e com payload vazio.
 - Rejeição de ciphertext adulterado (1 bit trocado).
 - Rejeição de IV incorreto.
 - **Rejeição de AAD adulterado** — cobre a proteção do cabeçalho (D5).
-- Rejeição com chave derivada de um `info` diferente.
-- **Critério de aceite**: todos os casos de adulteração lançam erro; nenhum decodifica silenciosamente para lixo.
+- Rejeição com chave derivada de outra dupla de usernames e com par de chaves de terceiro.
+- **Critério de aceite**: todos os casos de adulteração lançam erro; nenhum decodifica silenciosamente para lixo. ✅
+
+> **O último `FAKE_IMPLEMENTATION` saiu.** `isFakeImplementation()` agora devolve `false` e o aviso permanente da interface desapareceu — Huffman e cifragem são reais.
+>
+> **O app ainda não fecha o fluxo ponta a ponta**, porque nada popula a chave pública do outro usuário: isso é o 4.4, que depende do Épico 2. Até lá, compor uma mensagem devolve a mensagem prevista em 9.5 — *"Ainda não foi feita a troca de chaves com o outro usuário."* Os 29 testes provam que o módulo funciona; falta apenas a origem da chave do outro lado.
+>
+> **Custo fixo do arquivo subiu para 43 bytes** — 27 do cabeçalho D5 mais 16 da tag GCM. Uma mensagem de 114 B agora gera arquivo de 113 B (−0,9%), contra os 97 B da versão com XOR. O ponto de equilíbrio da nota exibida no painel de compressão (3.6) precisa ser reconferido.
 
 ### 4.9 Solicitar armazenamento persistente
 Por padrão, o navegador pode limpar o IndexedDB sozinho sob pressão de disco — e junto vai a chave privada. Uma chamada reduz bastante esse risco:
