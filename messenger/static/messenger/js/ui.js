@@ -58,6 +58,13 @@ export function formatPercent(ratio) {
   return `${sign}${delta.toFixed(1).replace(".", ",")}%`;
 }
 
+export function formatDecimal(value, decimals = 2) {
+  return value.toLocaleString("pt-BR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
 export function formatDate(ms) {
   return new Date(ms).toLocaleString("pt-BR");
 }

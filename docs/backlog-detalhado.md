@@ -185,7 +185,7 @@ messenger/
 |---|---|---|
 | `format.js` | **real** — layout D5 completo, com validação de magic, versão, bits reservados e `sender_id` | (adiantou 5.1 e parte de 5.2) |
 | `environment.js` | **real** — `requireSecureContext()` e `requestPersistentStorage()` | (adiantou 1.8 e 4.9) |
-| `huffman.js` | falso — `encode` devolve UTF-8 puro, `compressed: false` | Épico 3 |
+| `huffman.js` | **real desde o Épico 3** — Huffman canônico sobre bytes UTF-8 | (concluído) |
 | `crypto.js` | falso — XOR com constante fixa | Épico 4 |
 
 Os módulos falsos exportam `FAKE_IMPLEMENTATION = true`. O `app.js` lê essa flag e as páginas exibem um aviso permanente de que nada ali é seguro. Quando os Épicos 3 e 4 substituírem as implementações, a flag some e o aviso desaparece sozinho — **sem tocar no `app.js`**, que é o critério do 0.3.
@@ -421,50 +421,109 @@ export function requireSecureContext() {
 
 ---
 
-## Épico 3 — Compressão: Huffman (JS)
+## Épico 3 — Compressão: Huffman (JS) ✅
 
 > Ver **D1, D2, D3**. Alfabeto = bytes `0..255` + `EOF` (índice 256).
 
-### 3.1 Levantar a tabela de frequência de bytes (PT-BR)
-- Escrever um script auxiliar (`tools/gerar_tabela.js`) que lê um corpus de texto em português, converte para UTF-8 e conta a frequência de cada byte.
-- Corpus sugerido: alguns capítulos de domínio público (Machado de Assis via Domínio Público / Gutenberg) — texto real, com acentuação e pontuação naturais.
-- Atribuir frequência mínima **1** a todo byte que não apareceu, para que **todos os 256 bytes tenham um código** (sem isso, um byte inesperado quebra o `encode`).
-- Atribuir frequência **1** ao símbolo `EOF`.
-- Salvar o resultado como constante em `huffman.js`: `export const FREQ_TABLE = new Uint32Array(257)`.
-- **Critério de aceite**: a tabela tem exatamente 257 entradas, todas ≥ 1, e está commitada como constante (não é recalculada em runtime).
+### 3.1 Levantar a tabela de frequência de bytes (PT-BR) ✅
+- Script `tools/generate-frequency-table.js` lê o corpus de `tools/corpus/`, conta a frequência de cada byte e escreve o módulo `frequency-table.js`.
+- Frequência mínima **1** para todo byte que não apareceu, para que **todos os 256 bytes tenham código** — sem isso, um byte inesperado quebraria o `encode`. Frequência **1** também para o `EOF`.
+- Saída em módulo próprio (`messenger/static/messenger/js/frequency-table.js`), e não dentro do `huffman.js`: um literal de 257 números deixaria o codec ilegível, e um módulo separado deixa claro que é **dado gerado**. Ele exporta também `SOURCE`, com o gerador e o corpus de origem — provenência como dado, já que o código não leva comentários.
+- **Corpus (570 KB, todo em domínio público):** três obras de Machado de Assis via Project Gutenberg e o texto da Constituição de 1988. Fontes e situação legal em [`tools/corpus/FONTES.md`](../tools/corpus/FONTES.md).
+- **Critério de aceite**: 257 entradas, todas ≥ 1, commitada como constante e não recalculada em runtime. **20 testes** em `tests/frequency-table.test.js`.
 
-### 3.2 Construir a árvore de Huffman canônica
-- `buildHuffmanTree(freqTable)` → `{ codeLengths: Uint8Array(257), codes: Uint32Array(257), decodeTable }`.
-- Fila de prioridade (min-heap) com **desempate pelo menor índice de símbolo** (D3).
-- Após montar a árvore, extrair apenas os **comprimentos** de código e reatribuir os códigos de forma **canônica**: ordenar por (comprimento, índice do símbolo) e atribuir valores incrementais.
-- **Critério de aceite**: rodar a construção 100 vezes produz exatamente os mesmos `codeLengths` e `codes`; nenhum comprimento excede 32 bits.
+> **A medição mudou a escolha do corpus.** Com apenas as obras de Machado, `à` e `â` ficavam no piso da tabela (frequência 1) e custavam **24 bits** cada — como ocupam 2 bytes em UTF-8, a compressão os *expandia*. A causa é a ortografia de época dos textos do Gutenberg ("vae", "titulo", "aquella"), que quase não usa crase — e `à` é comuníssimo em português moderno.
+>
+> Acrescentar a Constituição (moderna, extensa, domínio público) levou `à` de 24,3 para 17,3 bits e tirou todos os acentuados comuns do piso. Em frase típica de chat, a estimativa de compressão foi de −31,4% para −33,0%.
+>
+> O teste `mantém %s acima do piso da tabela` trava essa propriedade: se alguém regenerar a tabela com um corpus ruim, a suíte acusa na hora.
 
-### 3.3 Implementar `encode(text)`
-- `TextEncoder` para obter os bytes UTF-8 do texto.
-- Emitir o código de cada byte, depois o código do `EOF`, empacotando os bits em um `Uint8Array` (MSB-first dentro de cada byte).
-- **Fallback de expansão** (D5): se o resultado ficar maior ou igual aos bytes UTF-8 originais, retornar `{ bytes: utf8Original, compressed: false }`. Caso contrário, `{ bytes: compressedBytes, compressed: true }`.
-- **Critério de aceite**: para um parágrafo de referência em PT-BR de ≥ 300 caracteres, a taxa de compressão é ≤ 0,65 e `compressed === true`. Para a string `"oi"`, `compressed === false`.
+### 3.2 Construir a árvore de Huffman canônica ✅
+- `buildCodebook(frequencies)` em `huffman-codebook.js` → `{ lengths, codes, symbolsInCanonicalOrder, minLength, maxLength, countByLength, firstCode, firstIndex }`. O módulo também exporta `CODEBOOK`, já construído a partir da tabela do 3.1.
+- Min-heap com **desempate pelo menor índice de símbolo** (D3). Nós internos herdam o menor índice da própria subárvore, o que torna a comparação uma ordem total — sem isso, dois nós de mesmo peso poderiam trocar de lugar entre execuções.
+- A árvore é usada **apenas para medir os comprimentos** e depois descartada. Os códigos são reatribuídos na forma canônica: símbolos ordenados por (comprimento, índice) recebem valores incrementais.
+- A atribuição usa multiplicação (`code *= 2 ** delta`) em vez de deslocamento à esquerda: `<<` em JavaScript opera em 32 bits com sinal e corromperia códigos longos.
+- Em vez de materializar a árvore para decodificar, o códebook carrega o **índice canônico** (`firstCode`, `firstIndex`, `countByLength`) — decodificação em tempo constante por bit, sem alocar nós.
+- **Critério de aceite**: 100 construções seguidas produzem `lengths` e `codes` idênticos; nenhum comprimento excede 32 bits. **35 testes** em `tests/huffman-codebook.test.js`.
 
-### 3.4 Implementar `decode(bytes, compressed)`
-- Se `compressed === false`, apenas `TextDecoder` sobre os bytes.
-- Se `true`, percorrer os bits navegando a tabela de decodificação, acumulando bytes até encontrar `EOF`; então `TextDecoder` sobre o resultado.
-- Lançar erro explícito se os bits acabarem antes do `EOF` (arquivo truncado).
-- **Critério de aceite**: `decode(...encode(text)) === text` para todos os textos de teste do 3.5.
+**Endurecimento da validação de entrada** (revisão de código posterior). `buildCodebook` é exportado e valida o que recebe, então a validação precisa ser sólida mesmo para entradas que a aplicação nunca produz:
 
-### 3.5 Testes unitários do módulo Huffman
-- Frases em português com acentos, cedilha e til.
-- Texto vazio (`""`).
-- String de um único caractere.
-- Emoji e caracteres CJK (validam que D1 eliminou o problema do escape).
-- Todos os 256 bytes possíveis em sequência.
-- Parágrafo longo (≥ 2000 caracteres) — checar tempo de execução.
-- Arquivo truncado — deve lançar erro, nunca retornar texto parcial silenciosamente.
-- **Critério de aceite**: todos os round-trips retornam o texto original exato; o caso truncado lança erro.
+- **Profundidade era medida direto num `Uint8Array`**, antes da checagem de `MAX_CODE_LENGTH`. Uma profundidade de 256 viraria 0 por truncamento, e um códebook inválido passaria pela checagem. Medição passou a usar array comum; a conversão para `Uint8Array` só acontece depois de validar. Na prática a aritmética de ponto flutuante limitava a profundidade a 255 — mas depender disso é segurança acidental, não garantia.
+- **A checagem `frequency >= 1` aceitava strings por coerção.** `"1" >= 1` é verdadeiro, e o valor chegava a `left.weight + right.weight`, onde JavaScript **concatena** em vez de somar: `"1" + "1"` dá `"11"`. A árvore resultante não era a de Huffman para as frequências informadas, e nada acusava. Trocado por `Number.isInteger(frequency) && frequency >= 1`, que rejeita string, `NaN`, `Infinity`, fracionário, `null` e objeto sem precisar de checagem de tipo à parte.
+- **Nova guarda de determinismo:** a soma das frequências precisa caber em `Number.MAX_SAFE_INTEGER`. Acima disso a adição de doubles deixa de ser exata, empates aparecem por arredondamento e a árvore perde a reprodutibilidade que D3 exige. Nenhuma tabela real chega perto — o pior caso com `Uint32Array` é ~1,1×10¹², contra o limite de 9×10¹⁵.
 
-### 3.6 Medir a taxa de compressão
-- Função `stats(text)` retornando `{ characters, originalBytes, compressedBytes, ratio, bitsPerChar }`.
-- Usada pelo painel do Épico 7.5.
-- **Critério de aceite**: os números batem com o cálculo manual para uma entrada conhecida.
+Nenhuma dessas correções altera o códebook real: min 3 / max 20 bits e Kraft = 1, iguais a antes.
+
+**Resultado medido sobre o corpus do 3.1:**
+
+| Métrica | Valor |
+|---|---|
+| Comprimento mínimo / máximo | 3 / **20 bits** |
+| Igualdade de Kraft | **exatamente 1** (código completo) |
+| Bits por byte | **4,6306** |
+| Entropia do corpus | 4,5937 |
+| Excesso sobre a entropia | **0,80%** |
+| Compressão esperada | **−42,1%** |
+
+Os códigos de 3 bits ficaram com o espaço e o `a`; as vogais restantes e o `r`/`s` com 4 bits. Os 143 símbolos de 19 bits são os bytes que nunca aparecem no corpus e estão no piso da tabela.
+
+> Os testes travam as propriedades que importam: determinismo em 100 execuções, ausência de prefixo entre quaisquer dois códigos (força bruta sobre os 257×257 pares), igualdade de Kraft, otimalidade (nenhum símbolo mais frequente recebe código mais longo) e consistência do índice de decodificação com os códigos.
+
+### 3.3 Implementar `encode(text)` ✅
+- `TextEncoder` para obter os bytes UTF-8; emite o código de cada byte, depois o do `EOF`, empacotando os bits **MSB-first** dentro de cada byte.
+- O acumulador de bits usa **aritmética** (`acc * 2 ** length + code`), não deslocamento. `<<` opera em 32 bits com sinal e corromperia a saída se um código longo coincidisse com bits pendentes.
+- O buffer de saída é alocado **exatamente**: a soma dos comprimentos dos códigos é conhecida antes de escrever, então não há realocação.
+- **Fallback de expansão** (D5): se o resultado ficar maior ou igual ao UTF-8 original, devolve `{ bytes: utf8Original, compressed: false }`.
+- **Critério de aceite**: parágrafo PT-BR de ≥ 300 caracteres dá taxa ≤ 0,65 com `compressed === true`; `"oi"` dá `compressed === false`. ✅
+
+### 3.4 Implementar `decode(bytes, compressed)` ✅
+- Com `compressed === false`, apenas `TextDecoder`. Com `true`, percorre os bits usando o **índice canônico** do 3.2 (`firstCode`/`firstIndex`/`countByLength`) — sem árvore materializada, sem alocar nós.
+- O buffer de saída também é alocado de uma vez: cada símbolo consome no mínimo `minLength` bits, então `bytes.length × 8 / minLength` é um teto exato.
+- Lança `HuffmanError` se os bits acabarem antes do `EOF`, com a mensagem de arquivo truncado prevista em 9.5.
+- `TextDecoder` em modo `fatal` — bytes que não formam UTF-8 válido viram erro, nunca texto com caracteres de substituição.
+- **Critério de aceite**: `decode(...encode(text)) === text` em todos os casos do 3.5. ✅
+
+### 3.5 Testes unitários do módulo Huffman ✅
+**30 testes** em `tests/huffman.test.js`, cobrindo o que o item pedia e mais:
+- 14 round-trips: acentos, cedilha, til, **crase**, texto vazio, um caractere, só espaços, quebras de linha (incluindo `\r\n`), emoji, CJK, cirílico, grego, pontuação pesada e dígitos.
+- Faixa Latin-1 completa (256 caracteres) e um texto cobrindo **todas as larguras de UTF-8** (1 a 4 bytes) — a validação de que D1 eliminou o problema do escape.
+- Fallback nos dois sentidos, e a garantia de que `encode` **nunca** devolve resultado maior que o UTF-8 original.
+- Truncamento: 11 cortes diferentes no fim do fluxo, exigindo erro ou texto diferente do original — nunca texto parcial silencioso.
+- Desempenho: 100 mil caracteres em ida e volta.
+
+**Compressão medida (round-trip verificado em todos):**
+
+| Texto | Original | Comprimido | Taxa |
+|---|---|---|---|
+| Parágrafo PT-BR (313 B) | 313 B | 176 B | **−43,8%** |
+| Chat longo | 279 B | 166 B | **−40,5%** |
+| Texto formal | 172 B | 100 B | **−41,9%** |
+| Chat curto | 46 B | 34 B | −26,1% |
+| `"oi"` | 2 B | 2 B | 0% (fallback) |
+| Só emoji | 16 B | 16 B | 0% (fallback) |
+
+> O fallback dispara exatamente onde deveria: texto curto demais para amortizar o EOF, e conteúdo cujos bytes estão no piso da tabela. Em nenhum caso o arquivo cresce.
+
+### 3.6 Medir a taxa de compressão ✅
+- `stats(text)` devolve `{ characters, originalBytes, compressedBytes, compressed, ratio, bitsPerChar, originalBitsPerChar }`. O campo `originalBitsPerChar` foi acrescentado para o painel poder comparar o custo do Huffman com o do UTF-8 puro, que é o número mais didático da tela.
+- `measure(text, encoded)` calcula os mesmos números **a partir de um `encode` já feito**. O `composeMessage` usa essa via: antes ele recalculava tamanho e taxa por conta própria, duplicando a lógica e reprocessando o texto. Agora há uma fonte única.
+- `encode` passou a devolver também `originalBytes` — extensão aditiva ao contrato do 0.3, que não quebra nenhum consumidor e elimina o reprocessamento do texto só para saber seu tamanho.
+- Painel ligado no `compose.js`, com as quatro linhas previstas no 7.5.
+- **Critério de aceite**: os números batem com o cálculo manual. ✅ **35 testes** em `tests/huffman.test.js`.
+
+**Painel como aparece na tela:**
+
+```
+Compressão
+  Original             268 B · 256 caracteres
+  Após Huffman         158 B · -41,0%
+  Arquivo final        185 B · -31,0%
+  Bits por caractere   4,94 · UTF-8 usaria 8,38
+```
+
+> **O painel expôs um comportamento que precisava de explicação.** Em mensagens curtas o *arquivo* cresce — "Chego às 19h" vira 40 B a partir de 13 B, +207,7% — porque o cabeçalho do D5 tem 27 bytes fixos. Sem contexto, o número parece defeito.
+>
+> A tela passou a exibir uma nota quando isso acontece, explicando que o cabeçalho é custo fixo e que a partir de algumas centenas de caracteres o arquivo já sai menor que o texto original. Dois testes travam os dois lados desse ponto de equilíbrio.
 
 ---
 
@@ -1013,7 +1072,7 @@ Limpar o IndexedDB e validar cada camada de **D11** isoladamente:
 
 - Apontar para o `infraestrutura.md` como ponto de partida: `cp .env.example .env` → `docker compose build` → bootstrap → `migrate` → `up`.
 - **Reforçar a convenção de duas origens do 1.7** (`localhost` = usuário A, `127.0.0.1` = usuário B) — é o que evita que cada dev invente o próprio jeito de testar o fluxo entre os dois usuários.
-- Regra da tabela de frequência: `tools/gerar_tabela.js` roda **uma vez**, o resultado é commitado, e ninguém regenera sem combinar com a equipe. Corpus diferentes produzem tabelas diferentes, e o sintoma é "texto decifrado vira lixo" — que parece bug de criptografia e não é.
+- Regra da tabela de frequência: `tools/generate-frequency-table.js` roda **uma vez**, o resultado é commitado, e ninguém regenera sem combinar com a equipe. Corpus diferentes produzem tabelas diferentes, e o sintoma é "texto decifrado vira lixo" — que parece bug de criptografia e não é.
 - Como usar os vetores de teste do 14.9.
 - **Critério de aceite**: um dev novo tem o ambiente rodando e o fluxo dos 2 usuários testado seguindo apenas este guia.
 
