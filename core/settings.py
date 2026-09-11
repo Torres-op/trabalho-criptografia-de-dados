@@ -100,3 +100,7 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+
+LOGIN_URL = "messenger:login"
+LOGIN_REDIRECT_URL = "messenger:compose"
+LOGOUT_REDIRECT_URL = "messenger:login"
