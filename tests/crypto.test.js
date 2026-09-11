@@ -19,7 +19,7 @@ const ALICE = "alice";
 const BOB = "bob";
 
 const bytes = (texto) => new TextEncoder().encode(texto);
-const aad = () => new Uint8Array([0x4d, 0x45, 0x4e, 0x43, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+const aad = () => new Uint8Array([0x54, 0x52, 0x48, 0x53, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
 let alice;
 let bob;
@@ -93,7 +93,7 @@ describe("derivação da chave compartilhada (4.5)", () => {
   });
 
   it("usa o info fixado em D4", () => {
-    expect(HKDF_INFO).toBe("msgenc/v1/aes-gcm-256");
+    expect(HKDF_INFO).toBe("treehash/v1/aes-gcm-256");
   });
 
   it("é determinística: derivar de novo dá a mesma chave", async () => {

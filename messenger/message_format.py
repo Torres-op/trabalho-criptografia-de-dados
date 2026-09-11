@@ -2,7 +2,7 @@ import struct
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-MAGIC = b"MENC"
+MAGIC = b"TRHS"
 VERSION = 1
 FLAG_COMPRESSED = 0x01
 RESERVED_FLAGS = 0xFE

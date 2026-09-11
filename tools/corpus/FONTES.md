@@ -44,4 +44,4 @@ Na prática o impacto é pequeno: os símbolos que dominam a compressão (espaç
 docker compose run --rm --entrypoint node js tools/generate-frequency-table.js
 ```
 
-⚠️ **Rode apenas se o corpus mudar, e combine com a equipe antes.** Corpus diferentes produzem tabelas diferentes, e uma tabela diferente torna os arquivos `.msgenc` já gerados ilegíveis. O sintoma é "texto decifrado vira lixo" — que parece bug de criptografia e não é.
+⚠️ **Rode apenas se o corpus mudar, e combine com a equipe antes.** Corpus diferentes produzem tabelas diferentes, e uma tabela diferente torna os arquivos `.treehash` já gerados ilegíveis. O sintoma é "texto decifrado vira lixo" — que parece bug de criptografia e não é.

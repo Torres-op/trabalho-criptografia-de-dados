@@ -170,7 +170,7 @@ Um erro comum é montar um volume sobre `site-packages` para "preservar" as depe
 | `docker compose down -v` | Derruba **e apaga o banco** |
 | `docker compose logs -f web` | Acompanha os logs |
 | `docker compose exec web bash` | Shell dentro do container |
-| `docker compose exec db psql -U msgenc -d msgenc` | Console do Postgres |
+| `docker compose exec db psql -U treehash -d treehash` | Console do Postgres |
 | `docker compose run --rm web python manage.py migrate` | Aplica migrations |
 | `docker compose run --rm web python manage.py makemigrations` | Gera migrations |
 | `docker compose run --rm web python manage.py createsuperuser` | Cria admin |
@@ -308,3 +308,19 @@ Sobraram perfis de seeds antigos — por exemplo `usuario1`/`usuario2`, da prime
 
 **`Já existe outra chave pública registrada para você no servidor`**
 Os dados do navegador foram apagados, ou você entrou por outro navegador ou por outra origem (`localhost` × `127.0.0.1`), e ele gerou um par novo. Com o write-once, o servidor recusa. Em desenvolvimento, vá em `/admin/` → **Perfis** → ação *Apagar a chave pública*; o próximo acesso registra de novo.
+
+**Atualizei para o nome Treehash**
+Antes da Revisão 6 do backlog, o app se chamava `msgenc`. Para quem já tinha o projeto rodando:
+
+- **O app acusa 409.** O banco do IndexedDB mudou de nome: o navegador não encontra a chave antiga e gera outra. Apague a chave no `/admin/` (item acima).
+- **As mensagens de teste antigas não abrem.** O magic e o `info` do HKDF mudaram. É esperado.
+- **Postgres.** O seu `.env` continua com `msgenc`, e o volume foi criado com esses nomes — isso segue funcionando. Não troque só o `.env`: o Postgres responde `password authentication failed for user "treehash"`. Para alinhar com o `.env.example`, renomeie dentro do próprio Postgres:
+
+```bash
+docker compose stop web
+docker compose exec db psql -U msgenc -d postgres -c "ALTER DATABASE msgenc RENAME TO treehash;" -c "CREATE ROLE rename_helper SUPERUSER LOGIN;"
+docker compose exec db psql -U rename_helper -d postgres -c "ALTER ROLE msgenc RENAME TO treehash;" -c "ALTER ROLE treehash PASSWORD 'treehash';"
+docker compose exec db psql -U treehash -d postgres -c "DROP ROLE rename_helper;"
+```
+
+Depois copie as linhas `POSTGRES_*` e `DATABASE_URL` do `.env.example` para o `.env` e rode `docker compose up -d`.

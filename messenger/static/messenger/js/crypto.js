@@ -1,6 +1,6 @@
 import { IV_SIZE } from "./format.js";
 
-export const HKDF_INFO = "msgenc/v1/aes-gcm-256";
+export const HKDF_INFO = "treehash/v1/aes-gcm-256";
 export const USERNAME_SEPARATOR = String.fromCharCode(0);
 export const HKDF_HASH = "SHA-256";
 export const AES_LENGTH = 256;

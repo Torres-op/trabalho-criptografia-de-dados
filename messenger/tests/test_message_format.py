@@ -2,12 +2,15 @@ from datetime import datetime, timezone
 
 from django.test import SimpleTestCase
 
-from messenger.message_format import MAX_SIZE, MIN_SIZE, InvalidMessage, parse_header
+from messenger.message_format import MAGIC, MAX_SIZE, MIN_SIZE, InvalidMessage, parse_header
 
 from .factories import CREATED_AT_MS, make_blob
 
 
 class ParseHeaderTests(SimpleTestCase):
+    def test_uses_the_magic_fixed_by_d5(self):
+        self.assertEqual(MAGIC, b"TRHS")
+
     def test_reads_every_field(self):
         header = parse_header(make_blob(sender_id=1, compressed=True))
         self.assertEqual(header.version, 1)
@@ -37,7 +40,7 @@ class RejectionTests(SimpleTestCase):
 
     def test_rejects_non_bytes(self):
         with self.assertRaisesMessage(InvalidMessage, "arquivo binário"):
-            parse_header("MENC")
+            parse_header("TRHS")
 
     def test_rejects_files_smaller_than_header_plus_tag(self):
         with self.assertRaisesMessage(InvalidMessage, "tamanho mínimo"):

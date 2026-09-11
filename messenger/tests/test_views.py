@@ -68,6 +68,11 @@ class SessionDataTests(TestCase):
 
 
 class LayoutTests(TestCase):
+    def test_pages_carry_the_app_name(self):
+        response = self.client.get(reverse("messenger:login"))
+        self.assertContains(response, "<title>Entrar — Treehash</title>")
+        self.assertContains(response, '<span class="brand">Treehash</span>')
+
     def test_login_page_hides_the_navigation(self):
         response = self.client.get(reverse("messenger:login"))
         self.assertEqual(response.status_code, 200)

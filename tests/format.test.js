@@ -30,7 +30,11 @@ function sample(overrides = {}) {
 }
 
 describe("layout do cabeçalho (D5)", () => {
-  it("escreve o magic MENC nos 4 primeiros bytes", () => {
+  it("usa o magic TRHS fixado em D5", () => {
+    expect([...MAGIC]).toEqual([0x54, 0x52, 0x48, 0x53]);
+  });
+
+  it("escreve o magic nos 4 primeiros bytes", () => {
     expect([...sample().slice(0, 4)]).toEqual([...MAGIC]);
   });
 
@@ -158,6 +162,6 @@ describe("fileName", () => {
   });
 
   it("segue o padrão msg-AAAAMMDD-HHmmss", () => {
-    expect(fileName(Date.now())).toMatch(/^msg-\d{8}-\d{6}\.msgenc$/);
+    expect(fileName(Date.now())).toMatch(/^msg-\d{8}-\d{6}\.treehash$/);
   });
 });

@@ -79,6 +79,11 @@ class MessageAdminTests(TestCase):
 
 
 class AdminAccessTests(TestCase):
+    def test_admin_carries_the_app_name(self):
+        self.client.force_login(make_superuser())
+        response = self.client.get(reverse("admin:index"))
+        self.assertContains(response, "Administração do Treehash")
+
     def test_participant_cannot_open_the_admin(self):
         diretor, _ = make_pair()
         self.client.force_login(diretor)

@@ -78,7 +78,7 @@ describe("metadados da mensagem", () => {
 
   it("sugere um nome de arquivo válido", async () => {
     const { name } = await composeMessage("teste", sessaoDaAlice);
-    expect(name).toMatch(/^msg-\d{8}-\d{6}\.msgenc$/);
+    expect(name).toMatch(/^msg-\d{8}-\d{6}\.treehash$/);
   });
 });
 

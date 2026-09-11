@@ -1,6 +1,6 @@
-# msgenc — Mensagens Criptografadas
+# Treehash — Mensagens Criptografadas
 
-Aplicativo de mensagens criptografadas entre **dois usuários fixos**. A mensagem é comprimida com uma árvore de Huffman e cifrada no navegador; o resultado vira um arquivo `.msgenc` que o remetente entrega ao destinatário por pen-drive, WhatsApp ou e-mail. O destinatário abre o arquivo no tradutor e lê o texto original.
+Aplicativo de mensagens criptografadas entre **dois usuários fixos**. A mensagem é comprimida com uma árvore de Huffman e cifrada no navegador; o resultado vira um arquivo `.treehash` que o remetente entrega ao destinatário por pen-drive, WhatsApp ou e-mail. O destinatário abre o arquivo no tradutor e lê o texto original.
 
 **O servidor nunca vê texto puro nem chaves privadas.** Ele guarda apenas blobs cifrados e chaves públicas.
 
@@ -75,7 +75,7 @@ messenger/                 app principal
   participants.py          os 2 participantes e o sender_id
   api.py                   endpoints de chave pública e de histórico
   jwk.py                   validação e forma canônica da chave pública
-  message_format.py        leitura do cabeçalho .msgenc no servidor
+  message_format.py        leitura do cabeçalho .treehash no servidor
   admin.py
   tests/                   suíte Django
   templates/messenger/     compose, translator, login
@@ -86,7 +86,7 @@ messenger/                 app principal
     crypto.js              ECDH + HKDF + AES-GCM
     keys.js                ciclo de vida das chaves
     keystore.js            IndexedDB, separado por usuário
-    format.js              formato binário .msgenc
+    format.js              formato binário .treehash
     api.js                 chamadas ao servidor
     app.js                 pipeline e sessão
     environment.js         guarda de contexto seguro

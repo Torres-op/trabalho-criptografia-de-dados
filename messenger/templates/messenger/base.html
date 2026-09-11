@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Mensagens Criptografadas{% endblock %}</title>
+  <title>{% block title %}Treehash{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'messenger/css/app.css' %}">
 </head>
 <body>
   <header class="topbar">
-    <span class="brand">msgenc</span>
+    <span class="brand">Treehash</span>
     {% if user.is_authenticated %}
     <nav>
       <a href="{% url 'messenger:compose' %}"

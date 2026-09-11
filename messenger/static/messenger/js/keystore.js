@@ -1,4 +1,4 @@
-export const DATABASE_NAME = "msgenc";
+export const DATABASE_NAME = "treehash";
 export const DATABASE_VERSION = 1;
 export const STORE_NAME = "keys";
 export const CURVE = "P-256";

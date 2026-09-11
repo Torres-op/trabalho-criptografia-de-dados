@@ -10,9 +10,9 @@ staticfiles/
 
 node_modules/
 
-*.msgkey
-*.msgenc
-!tests/vectors/*.msgenc
+*.treehashkey
+*.treehash
+!tests/vectors/*.treehash
 
 .vscode/
 .idea/

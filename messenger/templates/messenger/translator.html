@@ -1,17 +1,17 @@
 {% extends "messenger/base.html" %}
 {% load static %}
 
-{% block title %}Tradutor — Mensagens Criptografadas{% endblock %}
+{% block title %}Tradutor — Treehash{% endblock %}
 
 {% block content %}
 <h1>Tradutor</h1>
-<p class="subtitle">Envie o arquivo <code>.msgenc</code> que você recebeu. Ele é decifrado no seu navegador.</p>
+<p class="subtitle">Envie o arquivo <code>.treehash</code> que você recebeu. Ele é decifrado no seu navegador.</p>
 
 <div id="dropzone" class="dropzone" tabindex="0" role="button">
   <strong>Solte o arquivo aqui</strong>
   <span>ou clique para selecionar</span>
 </div>
-<input id="file" type="file" accept=".msgenc" hidden>
+<input id="file" type="file" accept=".treehash" hidden>
 
 <div id="status" class="status" hidden></div>
 
