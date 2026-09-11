@@ -94,7 +94,7 @@ export async function decrypt(iv, ciphertext, aesKey, aad) {
   }
 }
 
-function requireAesKey(aesKey) {
+export function requireAesKey(aesKey) {
   if (aesKey?.algorithm?.name !== "AES-GCM") {
     throw new KeyError("Ainda não foi feita a troca de chaves com o outro usuário.");
   }

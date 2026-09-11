@@ -1,4 +1,5 @@
-import { isFakeImplementation, openSession, readMessage } from "./app.js";
+import { createRemote, readSessionData } from "./api.js";
+import { isFakeImplementation, openSession, readMessage, senderNameFor } from "./app.js";
 import {
   EnvironmentError,
   requestPersistentStorage,
@@ -69,7 +70,9 @@ async function openKeys() {
   });
 
   try {
-    session = await openSession();
+    const context = readSessionData();
+    session = await openSession(context, createRemote(context));
+    messages.push(...session.notices);
     if (!session.ready) {
       messages.push(session.reason);
     }
@@ -80,18 +83,25 @@ async function openKeys() {
   ui.showNotices(notices, messages);
 }
 
+function authorLabel(senderId) {
+  if (!session?.username) {
+    return `remetente ${senderId}`;
+  }
+  const name = senderNameFor(senderId, session.username, session.peerUsername);
+  return name === session.username ? "você" : name;
+}
+
 async function process(file) {
   ui.clearStatus(status);
   result.hidden = true;
 
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const message = await readMessage(bytes, session?.aesKey);
+    const message = await readMessage(bytes, session);
 
     output.textContent = message.text;
     meta.textContent =
-      `Escrita em ${ui.formatDate(message.createdAt)} · ` +
-      `remetente ${message.senderId} · ` +
+      `Escrita por ${authorLabel(message.senderId)} em ${ui.formatDate(message.createdAt)} · ` +
       `${ui.formatBytes(message.fileBytes)}`;
     result.hidden = false;
     ui.showStatus(status, "success", "Mensagem decifrada", file.name);

@@ -86,6 +86,13 @@ function run(mode, operation) {
   );
 }
 
+export function recordKey(kind, owner) {
+  if (typeof owner !== "string" || owner.length === 0) {
+    throw new KeystoreError("É preciso informar a qual usuário as chaves pertencem.");
+  }
+  return `${kind}:${owner}`;
+}
+
 function isEcdhKey(value, type) {
   return (
     typeof CryptoKey === "function" &&
@@ -93,19 +100,6 @@ function isEcdhKey(value, type) {
     value.type === type &&
     value.algorithm?.name === "ECDH" &&
     value.algorithm?.namedCurve === CURVE
-  );
-}
-
-function isPeerRecord(value) {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    value.jwk !== null &&
-    typeof value.jwk === "object" &&
-    typeof value.localUsername === "string" &&
-    value.localUsername.length > 0 &&
-    typeof value.peerUsername === "string" &&
-    value.peerUsername.length > 0
   );
 }
 
@@ -119,8 +113,20 @@ function isKeyPair(value) {
   return REQUIRED_PRIVATE_USAGES.every((usage) => value.privateKey.usages.includes(usage));
 }
 
-export async function loadKeyPair() {
-  const stored = await run("readonly", (store) => store.get(LOCAL_KEY_PAIR));
+function isPeerRecord(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    value.jwk !== null &&
+    typeof value.jwk === "object" &&
+    typeof value.peerUsername === "string" &&
+    value.peerUsername.length > 0
+  );
+}
+
+export async function loadKeyPair(owner) {
+  const key = recordKey(LOCAL_KEY_PAIR, owner);
+  const stored = await run("readonly", (store) => store.get(key));
   if (stored === undefined) {
     return null;
   }
@@ -132,14 +138,16 @@ export async function loadKeyPair() {
   return stored;
 }
 
-export async function saveKeyPair(pair) {
+export async function saveKeyPair(owner, pair) {
+  const key = recordKey(LOCAL_KEY_PAIR, owner);
   if (!isKeyPair(pair)) {
     throw new KeystoreError("Par de chaves inválido.");
   }
-  await run("readwrite", (store) => store.put(pair, LOCAL_KEY_PAIR));
+  await run("readwrite", (store) => store.put(pair, key));
 }
 
-export async function saveKeyPairIfAbsent(pair) {
+export async function saveKeyPairIfAbsent(owner, pair) {
+  const key = recordKey(LOCAL_KEY_PAIR, owner);
   if (!isKeyPair(pair)) {
     throw new KeystoreError("Par de chaves inválido.");
   }
@@ -149,14 +157,14 @@ export async function saveKeyPairIfAbsent(pair) {
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(STORE_NAME, "readwrite");
     const store = transaction.objectStore(STORE_NAME);
-    const existing = store.get(LOCAL_KEY_PAIR);
+    const existing = store.get(key);
     let winner = null;
 
     existing.onsuccess = () => {
       if (isKeyPair(existing.result)) {
         winner = { pair: existing.result, stored: false };
       } else {
-        store.put(pair, LOCAL_KEY_PAIR);
+        store.put(pair, key);
         winner = { pair, stored: true };
       }
     };
@@ -164,22 +172,24 @@ export async function saveKeyPairIfAbsent(pair) {
     transaction.oncomplete = () => resolve(winner);
     transaction.onabort = () =>
       reject(new KeystoreError("A gravação do par de chaves foi cancelada."));
-    transaction.onerror = () =>
-      reject(new KeystoreError("Falha ao gravar o par de chaves."));
+    transaction.onerror = () => reject(new KeystoreError("Falha ao gravar o par de chaves."));
   });
 }
 
-export async function hasKeyPair() {
-  const total = await run("readonly", (store) => store.count(LOCAL_KEY_PAIR));
+export async function hasKeyPair(owner) {
+  const key = recordKey(LOCAL_KEY_PAIR, owner);
+  const total = await run("readonly", (store) => store.count(key));
   return total > 0;
 }
 
-export async function deleteKeyPair() {
-  await run("readwrite", (store) => store.delete(LOCAL_KEY_PAIR));
+export async function deleteKeyPair(owner) {
+  const key = recordKey(LOCAL_KEY_PAIR, owner);
+  await run("readwrite", (store) => store.delete(key));
 }
 
-export async function loadPeer() {
-  const stored = await run("readonly", (store) => store.get(PEER_PUBLIC_KEY));
+export async function loadPeer(owner) {
+  const key = recordKey(PEER_PUBLIC_KEY, owner);
+  const stored = await run("readonly", (store) => store.get(key));
   if (stored === undefined) {
     return null;
   }
@@ -191,15 +201,17 @@ export async function loadPeer() {
   return stored;
 }
 
-export async function savePeer(record) {
+export async function savePeer(owner, record) {
+  const key = recordKey(PEER_PUBLIC_KEY, owner);
   if (!isPeerRecord(record)) {
     throw new KeystoreError("Registro de chave do outro usuário inválido.");
   }
-  await run("readwrite", (store) => store.put(record, PEER_PUBLIC_KEY));
+  await run("readwrite", (store) => store.put(record, key));
 }
 
-export async function deletePeer() {
-  await run("readwrite", (store) => store.delete(PEER_PUBLIC_KEY));
+export async function deletePeer(owner) {
+  const key = recordKey(PEER_PUBLIC_KEY, owner);
+  await run("readwrite", (store) => store.delete(key));
 }
 
 export function closeDatabase() {

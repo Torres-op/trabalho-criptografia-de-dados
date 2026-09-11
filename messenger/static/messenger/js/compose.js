@@ -1,3 +1,4 @@
+import { createRemote, readSessionData } from "./api.js";
 import { composeMessage, isFakeImplementation, openSession } from "./app.js";
 import {
   EnvironmentError,
@@ -9,6 +10,13 @@ import * as ui from "./ui.js";
 
 const ENVELOPE_SIZE = HEADER_SIZE + TAG_SIZE;
 
+const STAGE_TITLES = Object.freeze({
+  HuffmanError: "Falha na compressão",
+  KeyError: "Falha na cifragem",
+  AuthenticationError: "Falha na cifragem",
+  FormatError: "Falha ao montar o arquivo",
+});
+
 const textArea = document.querySelector("#text");
 const button = document.querySelector("#generate");
 const counter = document.querySelector("#counter");
@@ -19,6 +27,7 @@ const notices = document.querySelector("#notices");
 
 let last = null;
 let session = null;
+let remote = null;
 
 function start() {
   try {
@@ -44,7 +53,10 @@ async function openKeys() {
   });
 
   try {
-    session = await openSession();
+    const context = readSessionData();
+    remote = createRemote(context);
+    session = await openSession(context, remote);
+    messages.push(...session.notices);
     if (!session.ready) {
       messages.push(session.reason);
     }
@@ -70,21 +82,38 @@ async function generate() {
   button.textContent = "Gerando...";
 
   try {
-    last = await composeMessage(textArea.value, session?.aesKey);
-    ui.downloadFile(last.file, last.name);
-    renderStats(last.stats);
+    last = await composeMessage(textArea.value, session);
+  } catch (error) {
+    ui.showStatus(status, "error", stageTitle(error), error.message);
+    finish();
+    return;
+  }
+
+  ui.downloadFile(last.file, last.name);
+  renderStats(last.stats);
+
+  const size = ui.formatBytes(last.file.length);
+  try {
+    await remote.saveMessage(last.file, "sent");
+    ui.showStatus(status, "success", "Arquivo gerado e salvo no histórico", `${last.name} — ${size}`);
+  } catch (error) {
     ui.showStatus(
       status,
-      "success",
-      "Arquivo gerado",
-      `${last.name} — ${ui.formatBytes(last.file.length)}`
+      "warning",
+      "Arquivo gerado, mas não foi salvo no histórico",
+      `${last.name} — ${size}. O download não foi afetado. Motivo: ${error.message}`
     );
-  } catch (error) {
-    ui.showStatus(status, "error", "Não foi possível gerar o arquivo", error.message);
-  } finally {
-    button.textContent = "Gerar mensagem criptografada";
-    updateCounter();
   }
+  finish();
+}
+
+function finish() {
+  button.textContent = "Gerar mensagem criptografada";
+  updateCounter();
+}
+
+function stageTitle(error) {
+  return STAGE_TITLES[error?.name] ?? "Não foi possível gerar o arquivo";
 }
 
 function renderStats(stats) {

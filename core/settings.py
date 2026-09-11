@@ -104,3 +104,5 @@ if not DEBUG:
 LOGIN_URL = "messenger:login"
 LOGIN_REDIRECT_URL = "messenger:compose"
 LOGOUT_REDIRECT_URL = "messenger:login"
+
+TEST_RUNNER = "core.test_runner.TestRunner"

@@ -3,8 +3,8 @@ import {
   hasKeyPair,
   loadKeyPair,
   loadPeer,
-  savePeer,
   saveKeyPairIfAbsent,
+  savePeer,
 } from "./keystore.js";
 
 export const CURVE = "P-256";
@@ -19,61 +19,70 @@ export class KeyError extends Error {
 
 export async function generateKeyPair() {
   requireSecureContext();
-  return crypto.subtle.generateKey(
-    { name: "ECDH", namedCurve: CURVE },
-    true,
-    [...KEY_USAGES]
-  );
+  return crypto.subtle.generateKey({ name: "ECDH", namedCurve: CURVE }, true, [...KEY_USAGES]);
 }
 
-let pending = null;
+const pending = new Map();
 
-export async function ensureKeyPair() {
-  if (!pending) {
-    pending = resolveKeyPair().finally(() => {
-      pending = null;
+export function ensureKeyPair(owner) {
+  if (!pending.has(owner)) {
+    const promise = resolveKeyPair(owner).finally(() => {
+      if (pending.get(owner) === promise) {
+        pending.delete(owner);
+      }
     });
+    pending.set(owner, promise);
   }
-  return pending;
+  return pending.get(owner);
 }
 
 export function forgetPendingKeyPair() {
-  pending = null;
+  pending.clear();
 }
 
-async function resolveKeyPair() {
+async function resolveKeyPair(owner) {
   requireSecureContext();
 
-  const stored = await loadKeyPair();
+  const stored = await loadKeyPair(owner);
   if (stored) {
     return { pair: stored, created: false };
   }
 
   const candidate = await generateKeyPair();
-  const { pair, stored: wasStored } = await saveKeyPairIfAbsent(candidate);
+  const { pair, stored: wasStored } = await saveKeyPairIfAbsent(owner, candidate);
   return { pair, created: wasStored };
 }
 
-export async function hasLocalKeyPair() {
-  return hasKeyPair();
+export async function hasLocalKeyPair(owner) {
+  return hasKeyPair(owner);
 }
 
-export async function loadPeerPublicKey() {
-  const stored = await loadPeer();
+export async function loadPeerPublicKey(owner) {
+  const stored = await loadPeer(owner);
   if (!stored) {
     return null;
   }
   return {
     publicKey: await importPublicKey(stored.jwk),
-    localUsername: stored.localUsername,
+    jwk: stored.jwk,
     peerUsername: stored.peerUsername,
   };
 }
 
-export async function savePeerPublicKey({ jwk, localUsername, peerUsername }) {
+export async function savePeerPublicKey(owner, { jwk, peerUsername }) {
   validatePublicJwk(jwk);
   await importPublicKey(jwk);
-  await savePeer({ jwk, localUsername, peerUsername });
+  await savePeer(owner, { jwk: publicMembers(jwk), peerUsername });
+}
+
+export function samePublicKey(a, b) {
+  return (
+    Boolean(a && b) && a.kty === b.kty && a.crv === b.crv && a.x === b.x && a.y === b.y
+  );
+}
+
+function publicMembers(jwk) {
+  return { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y };
 }
 
 export async function exportPublicKey(publicKey) {
@@ -93,7 +102,7 @@ export async function importPublicKey(jwk) {
   try {
     return await crypto.subtle.importKey(
       "jwk",
-      { ...jwk, key_ops: [], ext: true },
+      { ...publicMembers(jwk), key_ops: [], ext: true },
       { name: "ECDH", namedCurve: CURVE },
       true,
       []
