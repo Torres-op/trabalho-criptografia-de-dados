@@ -6,13 +6,19 @@ Aplicativo de mensagens criptografadas entre **dois usuários fixos**. A mensage
 
 ---
 
-## ⚠️ Estado atual
+## Estado atual
 
-**Épicos 0 e 1 concluídos** — esqueleto e infraestrutura.
+| Épico | Situação |
+|---|---|
+| 0, 1 — esqueleto e infraestrutura | ✅ |
+| 2 — autenticação e os 2 usuários fixos | ✅ |
+| 3 — compressão com Huffman | ✅ |
+| 4 — chaves ECDH, HKDF e AES-GCM | ✅ |
+| 7 — fluxo de envio | ✅ |
 
-A criptografia e a compressão ainda são **implementações falsas**: `huffman.js` devolve UTF-8 puro e `crypto.js` faz um XOR com constante fixa. Ambos exportam `FAKE_IMPLEMENTATION = true`, e a interface exibe um aviso permanente enquanto for assim.
+A compressão e a cifragem são **reais**. O fluxo completo funciona: cada usuário gera o próprio par de chaves no primeiro acesso, o servidor distribui as chaves públicas, e o arquivo gerado por um só abre no navegador do outro.
 
-**Nenhuma mensagem gerada hoje é segura.** As implementações reais chegam nos Épicos 3 (Huffman) e 4 (ECDH + AES-GCM).
+⚠️ **Ainda não há verificação de fingerprint (Épico 11).** Até lá, quem controlar o servidor pode entregar uma chave falsa no primeiro acesso. Não use para nada realmente sensível.
 
 ---
 
@@ -26,10 +32,13 @@ cd projeto_criptografia
 cp .env.example .env
 docker compose build
 docker compose run --rm web python manage.py migrate
+docker compose run --rm web python manage.py seed_users
 docker compose up
 ```
 
 Abra **http://localhost:8000**.
+
+Os dois usuários do sistema são os definidos em `SEED_USER_A`/`SEED_PASS_A` e `SEED_USER_B`/`SEED_PASS_B` no `.env`. Para o `/admin/`, crie um superusuário à parte com `createsuperuser` — ele não participa das conversas.
 
 > Se a porta 8000 já estiver ocupada, ajuste `WEB_PORT` no seu `.env`. Não edite o `docker-compose.yml`.
 
@@ -50,30 +59,41 @@ Use duas origens diferentes — o navegador as trata como dispositivos distintos
 
 | Usuário | URL |
 |---|---|
-| A | `http://localhost:8000` |
-| B | `http://127.0.0.1:8000` |
+| `SEED_USER_A` | `http://localhost:8000` |
+| `SEED_USER_B` | `http://127.0.0.1:8000` |
+
+Entre com um usuário em cada aba. Assim que os dois tiverem aberto o app uma vez, a troca de chaves acontece sozinha. Use sempre a **mesma origem para o mesmo usuário**: cada origem tem o próprio IndexedDB, e entrar pela origem errada gera um par novo, que o servidor recusa.
 
 ---
 
 ## Estrutura
 
 ```
-core/                    projeto Django (settings, urls)
-messenger/               app principal
-  templates/messenger/   compose.html, translator.html
-  static/messenger/
-    css/app.css
-    js/
-      format.js          formato binário .msgenc  (real)
-      environment.js     guarda de contexto seguro (real)
-      huffman.js         compressão                (falso — Épico 3)
-      crypto.js          cifragem                  (falso — Épico 4)
-      app.js             pipeline (não muda ao trocar as implementações)
-      ui.js              helpers de interface
-      compose.js         página Compor
-      translator.js      página Tradutor
-tests/                   suíte Vitest
-docs/                    backlog e infraestrutura
+core/                      projeto Django (settings, urls, test_runner)
+messenger/                 app principal
+  models.py                Profile e Message
+  participants.py          os 2 participantes e o sender_id
+  api.py                   endpoints de chave pública e de histórico
+  jwk.py                   validação e forma canônica da chave pública
+  message_format.py        leitura do cabeçalho .msgenc no servidor
+  admin.py
+  tests/                   suíte Django
+  templates/messenger/     compose, translator, login
+  static/messenger/js/
+    frequency-table.js     tabela de frequência (gerada)
+    huffman-codebook.js    códebook canônico
+    huffman.js             compressão
+    crypto.js              ECDH + HKDF + AES-GCM
+    keys.js                ciclo de vida das chaves
+    keystore.js            IndexedDB, separado por usuário
+    format.js              formato binário .msgenc
+    api.js                 chamadas ao servidor
+    app.js                 pipeline e sessão
+    environment.js         guarda de contexto seguro
+    ui.js, compose.js, translator.js
+tests/                     suíte Vitest
+tools/                     gerador da tabela de frequência e corpus
+docs/                      backlog, infraestrutura e convenções
 ```
 
 ## Documentação
@@ -88,7 +108,7 @@ docs/                    backlog e infraestrutura
 
 ## Convenções
 
-- **Código em inglês, interface em português.** Identificadores, arquivos, rotas e classes CSS em inglês; tudo que o usuário lê na tela em português, inclusive mensagens de erro.
+- **Código em inglês, interface em português.** Identificadores, arquivos, rotas, campos de model e classes CSS em inglês; tudo que o usuário lê na tela em português, inclusive mensagens de erro e rótulos do Admin.
 - **Código sem comentários.** A explicação vive em `docs/`.
 - Detalhes em [`docs/convencoes.md`](docs/convencoes.md).
 

@@ -32,6 +32,7 @@ Tudo que o usuário final lê na tela:
 - Mensagens de erro exibidas na interface — **inclusive as que nascem como `throw new FormatError("...")`**, porque acabam na tela do usuário.
 - Formatação de números e datas: `toLocaleString("pt-BR")`.
 - `LANGUAGE_CODE = "pt-br"`, `lang="pt-BR"`.
+- `verbose_name` de models e campos, e `description` de colunas e ações do Admin — é o texto que o Django Admin exibe. O nome do campo continua em inglês: `ecdh_public_key = models.TextField("chave pública ECDH")`.
 
 ### Na dúvida
 

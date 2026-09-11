@@ -56,10 +56,14 @@ git clone <url-do-repo>
 cd projeto_criptografia
 cp .env.example .env
 docker compose build
+docker compose run --rm web python manage.py migrate
+docker compose run --rm web python manage.py seed_users
 docker compose up
 ```
 
 No PowerShell, troque `cp` por `Copy-Item .env.example .env`.
+
+O `seed_users` cria os dois participantes definidos em `SEED_USER_A`/`SEED_PASS_A` e `SEED_USER_B`/`SEED_PASS_B`. Rodar de novo não duplica nada e não troca senhas. Um superusuário criado com `createsuperuser` serve para o `/admin/`, mas não participa das conversas.
 
 Abra `http://localhost:8000`. Se essa porta já estiver ocupada na sua máquina, ajuste `WEB_PORT` no `.env` — todas as URLs deste documento usam a porta padrão.
 
@@ -79,6 +83,8 @@ Isso faz os arquivos que o container cria (migrations, `startapp`) pertencerem a
 ---
 
 ## 4. Bootstrap do Épico 0
+
+> **Registro histórico.** Estes passos criaram a estrutura do projeto no Épico 0. Num clone novo **não rode** — `core/` e `messenger/` já existem; siga a seção 3.
 
 Na primeira vez, o projeto Django ainda não existe — não há `manage.py`, então o serviço `web` não sobe. Crie a estrutura pelo container:
 
@@ -227,6 +233,8 @@ Não é preciso segunda máquina, segundo navegador nem deploy. Use duas origens
 | **A** | `http://localhost:8000` |
 | **B** | `http://127.0.0.1:8000` |
 
+Use sempre a **mesma origem para o mesmo usuário**. Cada origem tem o próprio IndexedDB: entrar como A pela origem do B gera um par de chaves novo, e o servidor recusa com 409 porque A já registrou outra chave (write-once, item 4.3).
+
 As duas chegam ao mesmo container, mas o navegador as trata como **origens distintas**:
 
 - **Cookies separados** — cookies são indexados por host, e `localhost` e `127.0.0.1` são hosts diferentes. Dá para estar logado como A numa aba e como B na outra, ao mesmo tempo.
@@ -291,3 +299,12 @@ Outro processo ocupa a porta — frequentemente um container de outro projeto (`
 
 **Mudei o `requirements.txt` e a dependência não aparece**
 A camada `deps` precisa ser reconstruída: `docker compose build web`.
+
+**`ValueError: Missing staticfiles manifest entry` nos testes Django**
+O runner de testes força `DEBUG=False`, e com isso o `CompressedManifestStaticFilesStorage` passa a exigir o manifesto gerado pelo `collectstatic`, que só existe na imagem de produção. O `core/test_runner.py` troca o storage por um simples durante os testes — por isso o `settings.py` aponta `TEST_RUNNER` para ele. Se o erro aparecer, confira se essa linha continua lá.
+
+**`O sistema precisa de exatamente 2 participantes`**
+Sobraram perfis de seeds antigos — por exemplo `usuario1`/`usuario2`, da primeira versão do comando. Apague-os pelo `/admin/` em **Perfis** e rode `seed_users` de novo.
+
+**`Já existe outra chave pública registrada para você no servidor`**
+Os dados do navegador foram apagados, ou você entrou por outro navegador ou por outra origem (`localhost` × `127.0.0.1`), e ele gerou um par novo. Com o write-once, o servidor recusa. Em desenvolvimento, vá em `/admin/` → **Perfis** → ação *Apagar a chave pública*; o próximo acesso registra de novo.
