@@ -7,19 +7,19 @@ class Profile(models.Model):
     chave_registrada_em = models.DateTimeField(null=True)
     fingerprint_verificado = models.BooleanField(default=False)
 
-class Mensagem(models.Model):
-    ORIGEM_CHOICES = [
-        ('enviada', 'Enviada'),
-        ('recebida', 'Recebida')
+class Message(models.Model):
+    DIRECTION_CHOICES = [
+        ('sent', 'Enviada'),
+        ('received', 'Recebida')
     ]
-    remetente = models.ForeignKey(User, on_delete=models.CASCADE, related_name="enviadas")
-    destinatario = models.ForeignKey(User, on_delete=models.CASCADE, related_name="recebidas")
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sent")
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="received")
     blob = models.BinaryField()
-    criado_em = models.DateTimeField()
-    recebido_em = models.DateTimeField(auto_now_add=True)
-    origem = models.CharField(max_length=10, choices=ORIGEM_CHOICES)
-    
+    created_at = models.DateTimeField()
+    received_at = models.DateTimeField(auto_now_add=True)
+    direction = models.CharField(max_length=10, choices=DIRECTION_CHOICES)
+
     class Meta:
-            indexes = [
-                models.Index(fields=['destinatario', '-recebido_em']),
-            ]
+        indexes = [
+            models.Index(fields=['recipient', '-received_at']),
+        ]
