@@ -1,8 +1,8 @@
-# Backlog Detalhado — App de Mensagens Criptografadas (Django + JS)
+# Backlog Detalhado — Treehash (Django + JS)
 
 > **Stack:** Django (backend/API/Admin) + JavaScript puro no navegador (Huffman + Web Crypto API para toda a criptografia).
 > **Princípio central:** o servidor nunca vê texto puro nem chaves privadas. Ele guarda apenas blobs cifrados e chaves públicas.
-> **Canal de entrega:** o arquivo `.msgenc`, trocado offline (pen-drive, WhatsApp, e-mail). O servidor é cofre de histórico, não canal de transporte.
+> **Canal de entrega:** o arquivo `.treehash`, trocado offline (pen-drive, WhatsApp, e-mail). O servidor é cofre de histórico, não canal de transporte.
 
 ---
 
@@ -30,19 +30,19 @@ Ao construir a árvore, empates de frequência na fila de prioridade são desemp
 ```
 segredo   = ECDH.deriveBits(privadaLocal, publicaDoOutro, 256)
 salt      = SHA-256( utf8( usernameMenor + "\x00" + usernameMaior ) )   // ordem alfabética
-info      = utf8( "msgenc/v1/aes-gcm-256" )
+info      = utf8( "treehash/v1/aes-gcm-256" )
 aesKey  = HKDF-SHA256( segredo, salt, info ) → AES-GCM 256 bits
 ```
 
 `usernameMenor`/`usernameMaior` são os dois usernames ordenados alfabeticamente, para que ambos os lados produzam o mesmo `salt` independentemente de quem está cifrando.
 
-### D5. Formato binário `.msgenc` (v1)
+### D5. Formato binário `.treehash` (v1)
 
 Nada de JSON + base64 no arquivo final. Com o envelope JSON, o base64 (×1,33) mais os nomes de campo devolvem exatamente o que o Huffman economizou — o arquivo fica do mesmo tamanho do texto puro e a compressão deixa de existir na prática.
 
 | Offset | Tamanho | Campo | Descrição |
 |---|---|---|---|
-| 0 | 4 | `magic` | `"MENC"` — `0x4D 0x45 0x4E 0x43` |
+| 0 | 4 | `magic` | `"TRHS"` — `0x54 0x52 0x48 0x53` |
 | 4 | 1 | `version` | `0x01` |
 | 5 | 1 | `flags` | bit 0 = payload comprimido; bits 1–7 reservados (= 0) |
 | 6 | 1 | `sender_id` | `0` ou `1` — índice do remetente na lista de usernames em ordem alfabética |
@@ -59,9 +59,9 @@ Nada de JSON + base64 no arquivo final. Com o envelope JSON, o base64 (×1,33) m
 Para WhatsApp e e-mail no celular, anexar arquivo é desconfortável — e `mailto:` **não consegue anexar arquivos**. Por isso o mesmo conteúdo também é oferecido como bloco de texto:
 
 ```
------BEGIN MENC-----
+-----BEGIN TREEHASH-----
 <base64 do arquivo binário, quebrado em linhas de 64 caracteres>
------END MENC-----
+-----END TREEHASH-----
 ```
 
 O tradutor aceita as duas formas: arquivo e texto colado.
@@ -105,7 +105,7 @@ Com ECDH estático, a chave que lê o histórico é derivada da **privada local 
 | Camada | Protege contra | Onde vive | Épico |
 |---|---|---|---|
 | **1. Backup cifrado no servidor** | Trocar de dispositivo, limpar o navegador | Conta do app (blob opaco) | 6.8, 11.6 |
-| **2. Arquivo `.msgkey`** | Servidor fora do ar, conta perdida | Pen-drive, gerenciador de senhas | 11.3, 11.4 |
+| **2. Arquivo `.treehashkey`** | Servidor fora do ar, conta perdida | Pen-drive, gerenciador de senhas | 11.3, 11.4 |
 | **3. Recuperação assistida pelo outro usuário** | Falha das duas anteriores | Navegador do outro usuário | 11.7 |
 
 Todas as camadas usam **PBKDF2-HMAC-SHA256 com 600.000 iterações** (recomendação atual da OWASP) e salt aleatório de 16 bytes.
@@ -278,10 +278,10 @@ docker compose up
 - **Critério de aceite**: um `import` entre dois arquivos JS funciona na página carregada — verificado: `compose.js` importa `app.js`, `environment.js` e `ui.js`, e o Django serve os módulos com `Content-Type: text/javascript`.
 
 ### 1.5 Configurar `.gitignore` e variáveis de ambiente ✅
-- Ignorar `venv/`, `__pycache__/`, `.env`, `node_modules/`, `staticfiles/`, `*.msgkey` e `*.msgenc` — com exceção de `!tests/vectors/*.msgenc`, que são os vetores de teste do 14.9 e **precisam** ser versionados.
+- Ignorar `venv/`, `__pycache__/`, `.env`, `node_modules/`, `staticfiles/`, `*.treehashkey` e `*.treehash` — com exceção de `!tests/vectors/*.treehash`, que são os vetores de teste do 14.9 e **precisam** ser versionados.
 - Ler `SECRET_KEY`, `DJANGO_DEBUG`, `ALLOWED_HOSTS` e `DATABASE_URL` do ambiente (`python-decouple` + `dj-database-url`).
 - `.env.example` versionado é o **contrato**: toda variável nova entra lá no mesmo commit que a usa.
-- `.gitattributes` com `* text=auto eol=lf` — sem isso, um time em Windows e Linux gera diffs inteiros de fim de linha. Extensões binárias (`.msgenc`, `.msgkey`, imagens) marcadas como `binary` para não sofrerem conversão.
+- `.gitattributes` com `* text=auto eol=lf` — sem isso, um time em Windows e Linux gera diffs inteiros de fim de linha. Extensões binárias (`.treehash`, `.treehashkey`, imagens) marcadas como `binary` para não sofrerem conversão.
 - `README.md` na raiz com o passo a passo de clone e subida, o aviso de que a criptografia ainda é falsa, a estrutura do projeto e os links para `docs/`.
 - **Critério de aceite**: repositório não versiona segredos; um dev novo cria o `.env` só a partir do `.env.example`, sem perguntar nada a ninguém.
 
@@ -383,9 +383,9 @@ export function requireSecureContext() {
 
 ---
 
-## Épico 2 — Autenticação (2 usuários fixos)
+## Épico 2 — Autenticação (2 usuários fixos) ✅
 
-### 2.1 Criar model `Profile` (extensão do `User`)
+### 2.1 Criar model `Profile` (extensão do `User`) ✅
 - `Profile` em `messenger/models.py` com:
   - `user` — `OneToOneField(User)`
   - `ecdh_public_key` — `TextField(blank=True)`, chave pública em formato JWK serializado
@@ -393,31 +393,47 @@ export function requireSecureContext() {
   - `fingerprint_verified` — `BooleanField(default=False)` (usado no Épico 11)
 - **Critério de aceite**: model aparece no banco; relação `user.profile` funciona no shell do Django.
 
-### 2.2 Criar management command de seed
+> **Entregue por outro dev; nomes corrigidos depois (D13).** A primeira versão veio com identificadores em português (`chave_publica_ecdh`, `chave_registrada_em`, `fingerprint_verificado`), junto com o model `Mensagem` do 6.1. A migration `0003_english_identifiers` renomeia tudo sem perder dados: `RenameField`/`RenameModel`, um `RunPython` que traduz os valores de `direction` (`enviada` → `sent`) e a troca do índice. As migrations 0001 e 0002, já publicadas no `dev`, **não foram reescritas** — quem já as aplicou recebe só a 0003. Os rótulos que o Admin mostra ficam em português via `verbose_name`.
+>
+> `test_migrations.py` sobe o banco até a 0002, grava dados com os nomes antigos, migra para a 0003 e confere que tudo foi preservado — e que a volta também funciona.
+
+### 2.2 Criar management command de seed ✅
 - `messenger/management/commands/seed_users.py`.
 - Criar os 2 usuários fixos com `User.objects.get_or_create(...)` (idempotente) e o `Profile` correspondente.
 - Senhas iniciais vêm de variável de ambiente, nunca hardcoded.
 - Falhar com mensagem clara se as variáveis não estiverem definidas.
 - **Critério de aceite**: rodar `python manage.py seed_users` duas vezes não duplica usuários nem gera erro.
 
-### 2.3 Views de login/logout
+> **Corrigido.** A versão entregue fixava os nomes `usuario1`/`usuario2` e lia `USER1_PASSWORD`/`USER2_PASSWORD`, ignorando `SEED_USER_A`/`SEED_USER_B` do `.env`. Como os nomes entram no salt do D4, isso não era cosmético. Agora o comando lê `SEED_USER_{A,B}` e `SEED_PASS_{A,B}` via `python-decouple` (mesma convenção do `settings.py`), recusa nomes iguais, mantém a senha de quem já existe e avisa quando sobram participantes de seeds antigos. As variáveis duplicadas saíram do `.env.example`. **7 testes** em `messenger/tests/test_seed.py`.
+
+### 2.3 Views de login/logout ✅
 - Usar `django.contrib.auth.views.LoginView` e `LogoutView` no `urls.py`.
 - Template customizado `login.html`.
 - Configurar `LOGIN_URL`, `LOGIN_REDIRECT_URL`, `LOGOUT_REDIRECT_URL` em `settings.py`.
 - **Critério de aceite**: login com credenciais corretas redireciona para a home; credenciais erradas mostram mensagem de erro.
 
-### 2.4 Proteger views internas
+### 2.4 Proteger views internas ✅
 - Aplicar `LoginRequiredMixin` ou `@login_required` em todas as views do app, exceto login.
 - **Critério de aceite**: acessar qualquer URL interna sem login redireciona para `/login/`.
 
-### 2.5 Helper `get_other_user()`
+> Ajustes feitos junto com o 2.5: o menu e o botão "Sair" só aparecem para quem está logado (antes apareciam na própria tela de login), as classes CSS usadas pelo login (`login-card`, `logout-form`, `link-button`) passaram a existir, e as rotas duplicadas do `urls.py` foram removidas.
+
+### 2.5 Helper `get_other_user()` ✅
 - Função utilitária que, dado o usuário logado, retorna o outro `User` do sistema.
 - Deve falhar de forma explícita se não houver exatamente 2 usuários — é uma premissa do sistema inteiro.
 - **Critério de aceite**: com 2 usuários, retorna sempre o outro; com 1 ou 3+, lança exceção com mensagem clara.
 
-### 2.6 Registrar no Django Admin
+> **Participante = usuário com `Profile`.** A regra "exatamente 2 usuários" colidia com o 2.6, que exige um superusuário para abrir o Admin — ele seria o terceiro. Como o seed cria `Profile` só para os dois usuários fixos, o superusuário não conta. Em `messenger/participants.py`:
+> - `get_other_user(user)` levanta `ParticipantsNotConfigured` (subclasse de `ImproperlyConfigured`) quando não há exatamente 2 participantes, listando quem encontrou; e `NotAParticipant` (subclasse de `PermissionDenied`) para quem está fora da conversa — dentro de uma view, isso vira **403** sozinho.
+> - `sender_id_for(user, other)` calcula o índice do D5 no servidor ordenando por **unidades UTF-16** (`encode("utf-16-be")`), para bater exatamente com o `<` do JavaScript mesmo em nomes com caracteres fora do plano básico.
+>
+> **11 testes** em `messenger/tests/test_participants.py`.
+
+### 2.6 Registrar no Django Admin ✅
 - Registrar `Profile` exibindo `user`, `ecdh_public_key` (somente leitura), `key_registered_at` e `fingerprint_verified`.
 - **Critério de aceite**: superusuário consegue ver as chaves públicas cadastradas via `/admin/`.
+
+> `ProfileAdmin` mostra usuário, se há chave, quando foi registrada e se o fingerprint foi verificado; a chave e a data são somente leitura, e o usuário também, depois de criado. A **ação "Apagar a chave pública"** é a "intervenção via Admin" que o write-once do 4.3 exige para trocar de chave: limpa a chave, a data e a verificação. **7 testes** em `messenger/tests/test_admin.py`, junto com o `MessageAdmin` do 6.7.
 
 ---
 
@@ -531,7 +547,7 @@ Compressão
 
 ---
 
-## Épico 4 — Chaves e Cifragem (JS, Web Crypto API) — parcial
+## Épico 4 — Chaves e Cifragem (JS, Web Crypto API) ✅
 
 > Ver **D4** para os parâmetros exatos de derivação, **D10** para o requisito de contexto seguro e **D11** para a estratégia de recuperação da chave.
 
@@ -542,7 +558,7 @@ Compressão
 - `ensureKeyPair()` → devolve `{ pair, created }`; só gera se o keystore estiver vazio.
 - `requireSecureContext()` (1.8) chamado antes de qualquer operação.
 - `exportPublicKey()`, `importPublicKey()` e `validatePublicJwk()` já entram aqui, prontos para o 4.3 e o 4.4. A exportação devolve **apenas** `kty`, `crv`, `x`, `y` — nunca o `d`, que é o segredo.
-- **Chave privada extraível (`extractable: true`)** — exigência da camada 2 de D11: sem isso não há como exportar o backup `.msgkey` (11.3). O custo é que um XSS com acesso ao IndexedDB consegue exfiltrar a chave; é a CSP do 13.3 que reduz esse risco.
+- **Chave privada extraível (`extractable: true`)** — exigência da camada 2 de D11: sem isso não há como exportar o backup `.treehashkey` (11.3). O custo é que um XSS com acesso ao IndexedDB consegue exfiltrar a chave; é a CSP do 13.3 que reduz esse risco.
 - **Critério de aceite**: primeiro acesso gera par único; acessos seguintes reutilizam. ✅ **19 testes** em `tests/keys.test.js`.
 
 ### 4.2 Persistir as chaves localmente (`keystore.js`) ✅
@@ -557,7 +573,7 @@ Compressão
 
 **Infraestrutura de teste.** `vitest.config.js` com `tests/setup.js`, que carrega `fake-indexeddb/auto` e define `isSecureContext`. Sem isso, nenhum teste que toque em chaves rodaria.
 
-### 4.3 Endpoints de chave pública (Django)
+### 4.3 Endpoints de chave pública (Django) ✅
 > Movido para cá porque o 4.4 depende dele — no backlog anterior estava dois épicos à frente.
 
 - `POST /api/public-key/` — salva a JWK da chave pública no `Profile` do usuário logado.
@@ -566,11 +582,36 @@ Compressão
 - `GET /api/public-key/<username>/` — retorna a JWK do outro usuário.
 - **Critério de aceite**: só usuário autenticado acessa; retorna `404` para usuário inexistente; segundo `POST` retorna `409`.
 
-### 4.4 Publicar a chave pública e buscar a do outro
+> Implementado em `messenger/api.py`, com a validação em `messenger/jwk.py`.
+> - **Write-once sem corrida:** a leitura e a gravação acontecem dentro de `transaction.atomic()` com `select_for_update()` — dois POSTs simultâneos não conseguem ambos ver o campo vazio. É o espelho, no servidor, da corrida corrigida no keystore.
+> - **Reenviar a mesma chave devolve 200**, não 409. O navegador publica a chave a cada abertura de página; tratar isso como conflito geraria erro a cada reload. Só uma chave **diferente** é 409, que é o caso que o write-once existe para barrar.
+> - **Forma canônica:** a chave é guardada como `{"crv","kty","x","y"}` em ordem lexicográfica e sem espaços — exatamente a entrada do thumbprint da RFC 7638. O fingerprint do 11.1 vira `SHA-256` do texto guardado, sem normalização extra.
+> - O servidor valida **formato** (EC, P-256, coordenadas base64url de 32 bytes, sem `d`), não se o ponto está na curva — isso exigiria uma biblioteca criptográfica no Python. Quem garante o ponto é o `importKey` do navegador do outro lado, que recusa pontos inválidos (coberto em `keys.test.js`).
+> - Erros em JSON com `code`: `unauthenticated` (401), `not_participant` (403), `invalid_jwk` (400), `key_conflict` (409), `user_not_found` e `key_not_published` (404). Um superusuário consultado por `/api/public-key/admin/` recebe o mesmo 404 de usuário inexistente — a API não revela quem existe fora da conversa.
+>
+> **19 testes** em `test_public_key_api.py` e **13** em `test_jwk.py`.
+
+### 4.4 Publicar a chave pública e buscar a do outro ✅
 - Exportar com `crypto.subtle.exportKey("jwk", publicKey)` e enviar via `POST` (4.3) no primeiro login.
 - Buscar a JWK do outro usuário e importar com `crypto.subtle.importKey("jwk", ...)`.
 - Cachear a chave pública do outro no IndexedDB, para não depender do servidor a cada operação.
 - **Critério de aceite**: chave pública aparece no Django Admin após o primeiro login de cada usuário.
+
+> **Como o navegador descobre quem é quem.** As views passam ao template um objeto de sessão — `username`, `peerUsername`, token CSRF e as URLs da API — renderizado com `json_script`, que gera `<script type="application/json">`: dado inerte, não executável, compatível com a CSP do 13.3. O `api.js` lê esse objeto e monta as chamadas.
+>
+> **O fluxo do `openSession`:** carrega ou cria o par local → publica a chave pública → busca a do outro → guarda em cache no IndexedDB → deriva a chave AES e calcula o `sender_id`.
+>
+> | Situação | Comportamento |
+> |---|---|
+> | Outro usuário ainda não entrou | Não fica pronta; explica que a troca acontece sozinha no primeiro acesso do outro |
+> | Servidor tem **outra** chave para você (409) | Não fica pronta; explica que os dados do navegador foram apagados ou que é outro navegador |
+> | Servidor fora do ar, com cache | Fica pronta usando a chave guardada, com aviso |
+> | Servidor fora do ar, sem cache | Não fica pronta |
+> | A chave do outro **mudou** | Usa a nova, mas avisa para confirmar pessoalmente — sinal de possível MITM, precursor do 11.2 |
+>
+> **Bug encontrado e corrigido: o IndexedDB não separava por usuário.** Se o `diretor` saísse e o `marcio` entrasse no mesmo navegador, o `marcio` carregaria o par do `diretor` e o publicaria como seu — e, com o write-once, isso ficaria gravado errado no servidor. Os registros do keystore agora são indexados pelo dono (`local-key-pair:<username>`, `peer-public-key:<username>`). A convenção de duas origens do 1.7 escondia o problema, porque ali cada usuário tem um IndexedDB próprio.
+>
+> **Verificado ponta a ponta contra o servidor real**, por HTTP: login, token CSRF da página, publicação, idempotência, conflito, recusa sem CSRF e troca de chaves nos dois sentidos — 17 de 17. **14 testes** em `tests/session.test.js`, com um servidor falso que reproduz as respostas da API, e **15** em `tests/api.test.js`.
 
 ### 4.5 Derivar o segredo compartilhado ✅
 Implementar exatamente conforme **D4**:
@@ -618,7 +659,7 @@ const aesKey  = await crypto.subtle.deriveKey(
 
 > **O último `FAKE_IMPLEMENTATION` saiu.** `isFakeImplementation()` agora devolve `false` e o aviso permanente da interface desapareceu — Huffman e cifragem são reais.
 >
-> **O app ainda não fecha o fluxo ponta a ponta**, porque nada popula a chave pública do outro usuário: isso é o 4.4, que depende do Épico 2. Até lá, compor uma mensagem devolve a mensagem prevista em 9.5 — *"Ainda não foi feita a troca de chaves com o outro usuário."* Os 29 testes provam que o módulo funciona; falta apenas a origem da chave do outro lado.
+> **Resolvido no 4.4.** Registro do estado anterior: **o app ainda não fechava o fluxo ponta a ponta**, porque nada popula a chave pública do outro usuário: isso é o 4.4, que depende do Épico 2. Até lá, compor uma mensagem devolve a mensagem prevista em 9.5 — *"Ainda não foi feita a troca de chaves com o outro usuário."* Os 29 testes provam que o módulo funciona; falta apenas a origem da chave do outro lado.
 >
 > **Custo fixo do arquivo subiu para 43 bytes** — 27 do cabeçalho D5 mais 16 da tag GCM. Uma mensagem de 114 B agora gera arquivo de 113 B (−0,9%), contra os 97 B da versão com XOR. O ponto de equilíbrio da nota exibida no painel de compressão (3.6) precisa ser reconferido.
 
@@ -645,7 +686,7 @@ if (navigator.storage?.persist) {
 
 ---
 
-## Épico 5 — Formato de Arquivo `.msgenc`
+## Épico 5 — Formato de Arquivo `.treehash`
 
 > Especificação completa em **D5**. Este épico implementa e documenta.
 
@@ -658,7 +699,7 @@ if (navigator.storage?.persist) {
 ### 5.2 Validação estrita na leitura
 Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 - Arquivo menor que 28 bytes (cabeçalho + pelo menos a tag).
-- `magic` diferente de `"MENC"` → "este arquivo não é uma mensagem do app".
+- `magic` diferente de `"TRHS"` → "este arquivo não é uma mensagem do app".
 - `version` desconhecida → "arquivo gerado por uma versão mais nova do app".
 - `flags` com bits reservados diferentes de zero.
 - `sender_id` fora de `{0, 1}`.
@@ -667,7 +708,7 @@ Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 
 ### 5.3 Exportação: download do arquivo
 - `Blob` a partir do `Uint8Array` com tipo `application/octet-stream`, `URL.createObjectURL`, link com `download`.
-- Nome sugerido: `msg-<AAAAMMDD-HHmmss>.msgenc`.
+- Nome sugerido: `msg-<AAAAMMDD-HHmmss>.treehash`.
 - Liberar a URL com `URL.revokeObjectURL` após o clique.
 - **Critério de aceite**: o arquivo baixado, reimportado no próprio app, decifra corretamente.
 
@@ -690,11 +731,11 @@ Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 
 ## Épico 6 — API Django (histórico)
 
-### 6.1 Model `Message`
+### 6.1 Model `Message` ✅
 - Campos:
-  - `sender` — `FK(User, related_name="sent")`
-  - `recipient` — `FK(User, related_name="received")`
-  - `blob` — `BinaryField()` — o arquivo `.msgenc` completo, exatamente como gerado
+  - `sender` — `FK(User, related_name="sent_messages")`
+  - `recipient` — `FK(User, related_name="received_messages")`
+  - `blob` — `BinaryField()` — o arquivo `.treehash` completo, exatamente como gerado
   - `created_at` — `DateTimeField()` — extraído do cabeçalho, informado pelo cliente (D7)
   - `received_at` — `DateTimeField(auto_now_add=True)` (D7)
   - `direction` — `CharField(choices=["sent", "received"])` — sob a perspectiva de quem gravou
@@ -702,12 +743,20 @@ Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 - Índice em `(recipient, -received_at)`.
 - **Critério de aceite**: `makemigrations`/`migrate` aplicados sem erro.
 
-### 6.2 Endpoint: salvar mensagem no histórico
+> ✅ Criado adiantado pelo outro dev (como `Mensagem`) e renomeado na migration 0003. `related_name` virou `sent_messages`/`received_messages` — `user.sent` sozinho não deixava claro o que era.
+
+### 6.2 Endpoint: salvar mensagem no histórico ✅
 - `POST /api/messages/` — recebe o blob binário (base64 no corpo JSON) e `direction`.
 - O servidor **valida o cabeçalho** (magic, version, tamanho mínimo) mas nunca tenta decifrar.
 - `sender`/`recipient` derivados do usuário logado e de `get_other_user()` (2.5) conforme o `direction` — nunca aceitos do cliente.
 - `created_at` extraído do cabeçalho pelo servidor, não de um campo JSON separado.
 - **Critério de aceite**: mensagem salva com os dois usuários corretos; um cliente que tente informar outro remetente é ignorado.
+
+> ✅ **Adiantado — o 7.3 depende dele.** Além do previsto:
+> - **Checagem de remetente:** o servidor calcula o `sender_id` esperado (2.5) e recusa com `sender_mismatch` um arquivo cujo cabeçalho aponte o outro usuário. Não dá para registrar como "enviada por mim" uma mensagem que o cabeçalho diz ter sido escrita pelo outro.
+> - O parser do cabeçalho (`messenger/message_format.py`) espelha o `format.js`: magic, versão, bits reservados, `sender_id` e `created_at` com precisão de milissegundo. Arquivos acima de 1 MB são recusados (13.5).
+>
+> **11 testes** em `test_messages_api.py` e **11** em `test_message_format.py`.
 
 ### 6.3 Endpoint: listar histórico
 - `GET /api/messages/?page=N` — mensagens onde o usuário logado é remetente **ou** destinatário, mais recentes primeiro.
@@ -724,16 +773,18 @@ Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 - Evita duplicatas quando o usuário importa o mesmo arquivo duas vezes.
 - **Critério de aceite**: importar o mesmo arquivo duas vezes gera apenas um registro.
 
-### 6.6 Proteção CSRF nas chamadas JS
+### 6.6 Proteção CSRF nas chamadas JS ✅
 - Incluir `{% csrf_token %}` no template e enviar em `X-CSRFToken` em todo `fetch` de escrita.
-- Criar um helper `apiPost(url, data)` que faz isso automaticamente — evita esquecer em algum lugar.
+- `requestJson()` em `api.js` envia `X-CSRFToken` em toda escrita; o token vem do objeto de sessão da página (`get_token(request)`), sem leitura de cookie. ✅ Há teste com `enforce_csrf_checks=True` confirmando que POST sem token é recusado e que o token entregue pela página é aceito.
 - **Critério de aceite**: requisições POST sem o token são rejeitadas pelo Django.
 
-### 6.7 Registrar `Message` no Django Admin
+### 6.7 Registrar `Message` no Django Admin ✅
 - Exibir `sender`, `recipient`, `created_at`, `received_at`, tamanho do blob.
 - **Nunca** exibir o conteúdo do blob nem oferecer ação de decifrar.
 - `has_change_permission = False` — o histórico é imutável.
 - **Critério de aceite**: superusuário vê metadados, mas não o conteúdo, e não consegue editar.
+
+> ✅ **Adiantado junto com o 2.6** — é o único lugar para conferir o critério do 7.3 enquanto a tela de histórico (Épico 10) não existe. Sem adicionar nem editar; o conteúdo cifrado não aparece, só o tamanho.
 
 ### 6.8 Endpoints de backup da chave privada
 > Camada 1 de **D11**. É a diferença entre "espero ainda ter aquele arquivo de meses atrás" e "faço login e digito a senha".
@@ -748,13 +799,15 @@ Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 
 ---
 
-## Épico 7 — Fluxo de Envio ("Compositor")
+## Épico 7 — Fluxo de Envio ("Compositor") ✅
 
-### 7.1 Template de composição
+> **Concluído.** 7.1, 7.2 e 7.5 já estavam prontos desde os Épicos 0 e 3; faltavam o 7.3 e o 7.4, que dependiam do 6.2. O `sender_id` gravado no arquivo, fixo em `0` desde o Épico 0, agora vem da sessão real (4.4).
+
+### 7.1 Template de composição ✅
 - `compor.html` com `<textarea>`, contador de caracteres e botão "Gerar mensagem criptografada".
 - **Critério de aceite**: página renderiza e é acessível só logado.
 
-### 7.2 Orquestração do pipeline (`app.js`)
+### 7.2 Orquestração do pipeline (`app.js`) ✅
 ```
 texto
   → huffman.encode          → { bytes, compressed }
@@ -765,17 +818,21 @@ texto
 - Atenção à ordem: o AAD precisa ser montado **antes** de cifrar, porque entra na cifragem (4.6).
 - **Critério de aceite**: pipeline completo executa sem erros; o `app.js` não mudou em relação ao contrato do Épico 0.3.
 
-### 7.3 Salvar cópia no histórico
+### 7.3 Salvar cópia no histórico ✅
 - Após gerar o arquivo, `POST /api/messages/` com `direction = "sent"` (6.2).
 - **Critério de aceite**: mensagem aparece no histórico do remetente logo após a geração.
 
-### 7.4 Feedback visual
+> ✅ Depois do download, o `compose.js` chama `POST /api/messages/` com `direction = "sent"`. Verificável no Admin (6.7) enquanto o Épico 10 não traz a tela de histórico.
+
+### 7.4 Feedback visual ✅
 - Estado de carregamento durante o processamento.
 - Mensagem de sucesso ou erro específico por etapa que falhou (compressão / cifragem / envio ao histórico).
 - Falha ao salvar no histórico **não** deve impedir o download do arquivo — são operações independentes.
 - **Critério de aceite**: o usuário sempre recebe feedback; uma falha de rede não bloqueia a geração do arquivo.
 
-### 7.5 Painel de estatísticas de compressão
+> ✅ O título do erro indica a etapa (*Falha na compressão*, *Falha na cifragem*, *Falha ao montar o arquivo*). O download acontece **antes** da gravação no histórico: se o servidor falhar, o arquivo já foi entregue e a tela mostra um aviso amarelo — *"Arquivo gerado, mas não foi salvo no histórico"* — com o motivo.
+
+### 7.5 Painel de estatísticas de compressão ✅
 > Esta é a evidência visual de que a árvore de Huffman está fazendo trabalho real — vale mais para a apresentação do que várias features.
 
 Após gerar, exibir:
@@ -795,7 +852,7 @@ Bits/caractere:   4,31       (UTF-8: 8,32)
 > Este épico não existia no backlog anterior, apesar de ser o requisito central do projeto. Cada canal tem um detalhe próprio.
 
 ### 8.1 Pen-drive — download do arquivo
-- Botão "Baixar arquivo `.msgenc`" (usa 5.3).
+- Botão "Baixar arquivo `.treehash`" (usa 5.3).
 - Texto de apoio explicando que basta copiar para o pen-drive.
 - **Critério de aceite**: arquivo baixado, copiado e reaberto em outra máquina decifra corretamente.
 
@@ -857,7 +914,7 @@ Cada falha tem mensagem própria:
 
 | Situação | Mensagem |
 |---|---|
-| Não é um `.msgenc` (magic errado) | "Este arquivo não é uma mensagem do aplicativo." |
+| Não é um `.treehash` (magic errado) | "Este arquivo não é uma mensagem do aplicativo." |
 | Versão desconhecida | "Arquivo gerado por uma versão mais nova do app." |
 | Cabeçalho malformado | "Arquivo corrompido." |
 | Falha na tag GCM | "Arquivo adulterado ou chave incorreta." |
@@ -880,7 +937,7 @@ Cada falha tem mensagem própria:
 - **Critério de aceite**: mensagem antiga é decifrada sem precisar do arquivo original.
 
 ### 10.3 Ação "baixar novamente"
-- Reoferece o download do `.msgenc` original a partir do blob armazenado.
+- Reoferece o download do `.treehash` original a partir do blob armazenado.
 - **Critério de aceite**: o arquivo rebaixado é byte-a-byte idêntico ao original.
 
 ### 10.4 Paginação e filtros
@@ -917,17 +974,17 @@ Cada falha tem mensagem própria:
 - Exportar o par como JWK e cifrar com AES-GCM sob chave derivada de uma **senha de backup** via `PBKDF2` (SHA-256, **600.000 iterações** — recomendação atual da OWASP, ~0,5 s no desktop, salt aleatório de 16 bytes).
 - A senha de backup é distinta da senha de login e nunca sai do navegador.
 - O mesmo blob cifrado alimenta as **duas camadas** de D11: enviado ao servidor (6.8) e oferecido como download.
-- Layout do arquivo `.msgkey`: `magic("MKEY") | version | iterações(uint32) | salt(16) | iv(12) | ciphertext`.
+- Layout do arquivo `.treehashkey`: `magic("TKEY") | version | iterações(uint32) | salt(16) | iv(12) | ciphertext`.
 - Avisar que a senha não pode ser recuperada.
 - **Critério de aceite**: o blob gerado não contém a chave em claro (verificável abrindo em editor hex); o mesmo blob é aceito tanto pelo endpoint quanto pelo importador de arquivo.
 
 ### 11.4 Importar a chave privada (restauração)
-- Ler o `.msgkey`, pedir a senha, decifrar e gravar no IndexedDB.
+- Ler o `.treehashkey`, pedir a senha, decifrar e gravar no IndexedDB.
 - Senha errada → mensagem clara, sem revelar nada sobre a chave.
 - **Critério de aceite**: restaurar em um navegador limpo dá acesso ao histórico completo; senha errada falha de forma limpa.
 
 ### 11.5 Onboarding de primeiro acesso
-- Fluxo guiado no primeiro login: gerar chave → publicar chave pública → definir senha de backup → **enviar o backup ao servidor** (6.8) → **baixar o `.msgkey`** → verificar fingerprint.
+- Fluxo guiado no primeiro login: gerar chave → publicar chave pública → definir senha de backup → **enviar o backup ao servidor** (6.8) → **baixar o `.treehashkey`** → verificar fingerprint.
 - As duas camadas de backup são criadas no mesmo passo, a partir do mesmo blob (11.3) — para o usuário é uma ação só.
 - **Critério de aceite**: o usuário não consegue chegar ao compositor sem ter passado pelo backup.
 
@@ -1052,21 +1109,21 @@ Se um usuário perde a chave e nenhum backup funciona, o outro ainda tem a dele 
 - **Critério de aceite**: o roteiro completo passa sem intervenção manual em nenhuma etapa criptográfica.
 
 ### 14.7 Teste de adulteração manual
-- Abrir um `.msgenc` em editor hex e alterar: 1 byte do ciphertext; 1 byte do `created_at` (testa o AAD); o `sender_id`.
+- Abrir um `.treehash` em editor hex e alterar: 1 byte do ciphertext; 1 byte do `created_at` (testa o AAD); o `sender_id`.
 - **Critério de aceite**: os três casos são rejeitados; o sistema nunca exibe texto incorreto.
 
 ### 14.8 Teste de perda de chave — as três camadas
 Limpar o IndexedDB e validar cada camada de **D11** isoladamente:
 - **Camada 1** — restaurar via backup no servidor (11.6), apenas com login e senha de backup.
-- **Camada 2** — restaurar via arquivo `.msgkey` (11.4), com o endpoint de backup indisponível.
+- **Camada 2** — restaurar via arquivo `.treehashkey` (11.4), com o endpoint de backup indisponível.
 - **Camada 3** — recuperação assistida (11.7): apagar a chave de A **e** o backup no servidor, e recuperar o histórico pelo navegador de B.
 - Confirmar também que, sem nenhuma chave, o histórico lista as mensagens com o aviso do 10.5 em vez de quebrar.
 - **Critério de aceite**: as três camadas recuperam o acesso seguindo apenas a documentação, cada uma testada com as demais desabilitadas.
 
 ### 14.9 Vetores de teste fixos (compartilhados pela equipe)
-> Cada dev tem o próprio banco e, portanto, chaves diferentes — um `.msgenc` gerado numa máquina **não abre** em outra. Sem uma base comum, o time não tem como testar compatibilidade de formato.
+> Cada dev tem o próprio banco e, portanto, chaves diferentes — um `.treehash` gerado numa máquina **não abre** em outra. Sem uma base comum, o time não tem como testar compatibilidade de formato.
 
-- Commitar em `tests/vectors/`: um par de chaves ECDH de teste conhecido (em JWK, claramente marcado como **somente para teste**), e alguns arquivos `.msgenc` de referência com o texto esperado de cada um.
+- Commitar em `tests/vectors/`: um par de chaves ECDH de teste conhecido (em JWK, claramente marcado como **somente para teste**), e alguns arquivos `.treehash` de referência com o texto esperado de cada um.
 - Cobrir: texto curto (com fallback de compressão acionado), parágrafo em PT-BR, texto com emoji, e um arquivo deliberadamente adulterado.
 - Os testes do 14.3 e 14.4 rodam contra esses vetores.
 - **Critério de aceite**: os vetores decifram para o texto esperado em qualquer máquina da equipe; uma mudança acidental no formato ou na tabela de frequência quebra o teste imediatamente.
@@ -1174,6 +1231,28 @@ docker compose --profile tunnel up tunnel
 
 ## Changelog
 
+### Revisão 6 — nome do app
+
+| Mudança | Motivo |
+|---|---|
+| **Nome do app: Treehash** (antes `msgenc`) — interface, Admin, extensão `.treehash`, magic `TRHS`, `info` do HKDF, marcador armored, IndexedDB e Postgres; no backup do Épico 11, `.treehashkey` e `TKEY` | Feito antes de existir arquivo em circulação, o único momento em que trocar esses identificadores não quebra nada. Daqui em diante eles não mudam — lista em [`convencoes.md`](convencoes.md#6-o-nome-do-app) |
+
+### Revisão 5 — Épico 2 concluído, Épico 4 fechado e Épico 7
+
+| Mudança | Motivo |
+|---|---|
+| **Migration `0003_english_identifiers`** | O Épico 2 chegou com models em português, violando D13. Renomeação preservando dados, sem reescrever as migrations já publicadas no `dev` |
+| **Seed lê `SEED_USER_*`/`SEED_PASS_*`** | A versão entregue fixava `usuario1`/`usuario2` e ignorava o `.env`; os nomes entram no salt do D4 |
+| **Participante = usuário com `Profile`** (2.5) | "Exatamente 2 usuários" colidia com o superusuário exigido pelo 2.6 |
+| **Admin com ação de apagar a chave** (2.6) | É a "intervenção via Admin" que o write-once do 4.3 prevê |
+| **Endpoints de chave pública** (4.3) | Write-once com `select_for_update`; mesma chave reenviada devolve 200; forma canônica compatível com a RFC 7638 |
+| **Sessão entregue por `json_script`** (4.4) | Dado inerte na página, compatível com a CSP do 13.3 |
+| **Keystore separado por usuário** (4.4) | Dois usuários no mesmo navegador compartilhavam o par — o segundo publicaria a chave do primeiro |
+| **`POST /api/messages/` e `MessageAdmin`** (6.2, 6.7) | Adiantados porque o 7.3 depende deles |
+| **`sender_id` real** (7.x) | Era fixo em `0` desde o Épico 0 |
+| **`core.test_runner.TestRunner`** | Os testes rodam com `DEBUG=False`, e aí o storage com manifesto exige `collectstatic`; qualquer teste que renderizasse template quebrava |
+| **Suíte Django criada** | O projeto não tinha nenhum teste Python; agora são 93, incluindo um teste da migration |
+
 ### Revisão 4 — idioma do código
 
 | Mudança | Motivo |
@@ -1200,7 +1279,7 @@ docker compose --profile tunnel up tunnel
 | **Novo `docs/infraestrutura.md`** | Toda a explicação operacional num lugar só; os arquivos de configuração ficam sem comentários |
 | **1.1** — sem virtualenv local | `startproject`/`startapp` rodam dentro do container, garantindo a mesma versão do Django para todos |
 | **1.2** — dependências atualizadas | Django 5.2 LTS, mais `psycopg[binary]`, `dj-database-url`, `gunicorn` e `whitenoise`; `package-lock.json` versionado |
-| **1.5** — `.gitignore` com exceção para os vetores | `*.msgenc` é ignorado, mas `!tests/vectors/*.msgenc` precisa ser versionado (14.9) |
+| **1.5** — `.gitignore` com exceção para os vetores | `*.treehash` é ignorado, mas `!tests/vectors/*.treehash` precisa ser versionado (14.9) |
 | **1.6** — Vitest pelo serviço `js` | Mesma versão de Node para todos, sem instalar Node no host |
 | **1.7** — nota sobre Docker | A convenção das duas origens funciona igual sob container; a porta publicada responde nos dois endereços |
 | **0.1** — reescrito com a sequência de bootstrap | Um dev novo chega ao primeiro `runserver` com seis comandos, todos copiáveis do backlog |

@@ -1,7 +1,7 @@
 * text=auto eol=lf
 
-*.msgenc binary
-*.msgkey binary
+*.treehash binary
+*.treehashkey binary
 *.png binary
 *.jpg binary
 *.jpeg binary

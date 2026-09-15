@@ -1,22 +1,40 @@
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import HttpResponseNotAllowed, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import render
+from django.urls import reverse
 
+from . import api
 from .models import Message
+from .participants import get_other_user
 
 PAGE_SIZE = 20
 
 
+def session_context(request):
+    peer = get_other_user(request.user)
+    return {
+        "username": request.user.get_username(),
+        "peerUsername": peer.get_username(),
+        "csrfToken": get_token(request),
+        "endpoints": {
+            "publishPublicKey": reverse("messenger:api-publish-public-key"),
+            "peerPublicKey": reverse("messenger:api-public-key", args=[peer.get_username()]),
+            "messages": reverse("messenger:api-messages"),
+        },
+    }
+
+
 @login_required
 def compose(request):
-    return render(request, "messenger/compose.html")
+    return render(request, "messenger/compose.html", {"session": session_context(request)})
 
 
 @login_required
 def translator(request):
-    return render(request, "messenger/translator.html")
+    return render(request, "messenger/translator.html", {"session": session_context(request)})
 
 
 def message_list(request):
@@ -50,3 +68,11 @@ def message_list(request):
             "count": page.paginator.count,
         }
     )
+
+
+def messages_api(request):
+    if request.method == "GET":
+        return message_list(request)
+    if request.method == "POST":
+        return api.save_message(request)
+    return HttpResponseNotAllowed(["GET", "POST"])
