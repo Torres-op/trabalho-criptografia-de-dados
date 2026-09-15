@@ -14,6 +14,10 @@
          class="{% if request.resolver_match.url_name == 'compose' %}active{% endif %}">Compor</a>
       <a href="{% url 'messenger:translator' %}"
          class="{% if request.resolver_match.url_name == 'translator' %}active{% endif %}">Tradutor</a>
+      <form method="post" action="{% url 'messenger:logout' %}" class="logout-form">
+    {% csrf_token %}
+        <button type="submit" class="link-button">Sair</button>
+      </form>
     </nav>
   </header>
 

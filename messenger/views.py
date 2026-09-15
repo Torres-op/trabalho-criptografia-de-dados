@@ -8,10 +8,12 @@ from .models import Message
 PAGE_SIZE = 20
 
 
+@login_required
 def compose(request):
     return render(request, "messenger/compose.html")
 
 
+@login_required
 def translator(request):
     return render(request, "messenger/translator.html")
 
