@@ -13,6 +13,9 @@ export function toArmor(bytes) {
   if (!(bytes instanceof Uint8Array)) {
     throw new ArmorError("Entrada inválida: esperado Uint8Array.");
   }
+  if (bytes.length === 0) {
+    throw new ArmorError("Bloco de mensagem está vazio.");
+  }
 
   const base64 = bytesToBase64(bytes);
   const lines = [];
