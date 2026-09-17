@@ -25,13 +25,6 @@ const STAGE_TITLES = Object.freeze({
   FormatError: "Falha ao montar o arquivo",
 });
 
-const NOTE =
-  "Cada caractere vira um valor: o código ASCII multiplicado pelo número de vezes que ele " +
-  "aparece na mensagem. Os valores entram numa árvore binária de busca, remontada do zero a " +
-  "cada mensagem, e o percurso em ordem devolve os valores em ordem crescente. Caracteres " +
-  "fora do ASCII, como ç ou emoji, usam o ponto de código Unicode, já que a tabela ASCII vai " +
-  "só até 127.";
-
 const BUILD_MS = 5000;
 const MIN_STEP_MS = 90;
 const MAX_STEP_MS = 420;
@@ -155,7 +148,9 @@ function showTree(text) {
     view = createTreeView(document.querySelector("#tree"));
   }
 
-  treeNote.textContent = NOTE + tieNote(sharedValues(buildCharacterTree(text)));
+  const warning = tieNote(sharedValues(buildCharacterTree(text)));
+  treeNote.textContent = warning;
+  treeNote.hidden = warning === "";
   view.fit();
   build = { text, entries, root: null, index: 0, timer: null };
 
@@ -246,7 +241,7 @@ function tieNote(groups) {
     .join("; ");
 
   return (
-    ` Dois caracteres podem cair no mesmo valor, e nesta mensagem isso aconteceu: ${collisions}. ` +
+    `Dois caracteres podem cair no mesmo valor, e nesta mensagem isso aconteceu: ${collisions}. ` +
     "O desempate é pelo código do caractere, para a árvore continuar determinística."
   );
 }
