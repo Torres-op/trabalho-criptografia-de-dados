@@ -137,9 +137,9 @@ Documentação operacional completa em [`infraestrutura.md`](infraestrutura.md).
 
 ### D13. Código em inglês, interface em português
 
-**Em inglês** — todo identificador de código: apps, módulos, arquivos, rotas, classes, funções, variáveis, constantes, chaves de objeto, campos de model, endpoints, IDs e classes CSS, blocos de template, branches e mensagens de commit.
+**Em inglês** — todo identificador de código: apps, módulos, arquivos, rotas, classes, funções, variáveis, constantes, chaves de objeto, campos de model, endpoints, IDs e classes CSS, blocos de template e nomes de branch.
 
-**Em português** — tudo que o usuário lê na tela: títulos, rótulos, botões, placeholders e **mensagens de erro exibidas na interface**, inclusive as lançadas de dentro do código (`throw new FormatError("Arquivo corrompido...")`). Também a formatação de números e datas (`toLocaleString("pt-BR")`).
+**Em português** — tudo que o usuário lê na tela: títulos, rótulos, botões, placeholders e **mensagens de erro exibidas na interface**, inclusive as lançadas de dentro do código (`throw new FormatError("Arquivo corrompido...")`). Também a formatação de números e datas (`toLocaleString("pt-BR")`) e as **mensagens de commit**, curtas e no imperativo — só o prefixo (`feat`, `fix`, `docs`) fica em inglês, porque é palavra-chave do formato.
 
 Na dúvida: *isso aparece na tela para o usuário?* Se sim, português; se não, inglês. Um mesmo arquivo mistura os dois normalmente.
 

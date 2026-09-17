@@ -22,7 +22,7 @@ Tudo que é identificador de código:
 | Endpoints da API | `/api/public-key/`, `/api/messages/` |
 | IDs e classes CSS | `#dropzone`, `.status--error`, `--surface` |
 | Blocos de template | `{% block content %}` |
-| Nomes de branch e mensagens de commit | `feat/huffman-encoder` |
+| Nomes de branch | `feat/huffman-encoder` |
 
 ### Em português
 
@@ -32,6 +32,7 @@ Tudo que o usuário final lê na tela:
 - Mensagens de erro exibidas na interface — **inclusive as que nascem como `throw new FormatError("...")`**, porque acabam na tela do usuário.
 - Formatação de números e datas: `toLocaleString("pt-BR")`.
 - `LANGUAGE_CODE = "pt-br"`, `lang="pt-BR"`.
+- **Mensagens de commit**, curtas e no imperativo: `feat: monta a árvore passo a passo`. Só o prefixo (`feat`, `fix`, `docs`, `refactor`, `chore`) fica em inglês, porque é palavra-chave do formato.
 - `verbose_name` de models e campos, e `description` de colunas e ações do Admin — é o texto que o Django Admin exibe. O nome do campo continua em inglês: `ecdh_public_key = models.TextField("chave pública ECDH")`.
 
 ### Na dúvida
