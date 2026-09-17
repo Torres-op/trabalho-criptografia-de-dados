@@ -25,6 +25,14 @@ class Profile(models.Model):
         return bool(self.ecdh_public_key)
 
 
+class MessageQuerySet(models.QuerySet):
+    def owned_by(self, user):
+        return self.filter(
+            models.Q(direction=Message.Direction.SENT, sender=user)
+            | models.Q(direction=Message.Direction.RECEIVED, recipient=user)
+        )
+
+
 class Message(models.Model):
     class Direction(models.TextChoices):
         SENT = "sent", "Enviada"
@@ -46,6 +54,8 @@ class Message(models.Model):
     created_at = models.DateTimeField("escrita em")
     received_at = models.DateTimeField("recebida em", auto_now_add=True)
     direction = models.CharField("origem", max_length=10, choices=Direction.choices)
+
+    objects = MessageQuerySet.as_manager()
 
     class Meta:
         ordering = ["-received_at"]

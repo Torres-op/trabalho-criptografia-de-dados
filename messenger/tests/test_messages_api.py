@@ -4,9 +4,10 @@ from datetime import datetime, timezone
 from django.test import Client, TestCase
 from django.urls import reverse
 
+from messenger.api import PAGE_SIZE
 from messenger.models import Message
 
-from .factories import CREATED_AT_MS, encode_blob, make_blob, make_pair
+from .factories import CREATED_AT_MS, encode_blob, make_blob, make_pair, make_superuser
 
 MESSAGES_URL = reverse("messenger:api-messages")
 
@@ -89,3 +90,90 @@ class SaveMessageTests(TestCase):
         response = self.save({"blob": encode_blob(make_blob(sender_id=1)), "direction": "sent"}, other)
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Message.objects.get().sender, self.marcio)
+
+
+class ListMessagesTests(TestCase):
+    def setUp(self):
+        self.diretor, self.marcio = make_pair()
+        self.client.force_login(self.diretor)
+
+    def create_message(self, sender, recipient, direction, sender_id=0):
+        return Message.objects.create(
+            sender=sender,
+            recipient=recipient,
+            blob=make_blob(sender_id=sender_id),
+            created_at=datetime(2026, 9, 17, 12, tzinfo=timezone.utc),
+            direction=direction,
+        )
+
+    def test_lists_only_the_copy_the_logged_user_saved(self):
+        mine = self.create_message(self.diretor, self.marcio, Message.Direction.SENT)
+        self.create_message(self.diretor, self.marcio, Message.Direction.RECEIVED)
+
+        body = self.client.get(MESSAGES_URL).json()
+
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["results"][0]["id"], mine.pk)
+        self.assertEqual(body["results"][0]["direction"], "sent")
+
+    def test_each_participant_sees_their_own_copy(self):
+        self.create_message(self.diretor, self.marcio, Message.Direction.SENT)
+        theirs = self.create_message(self.diretor, self.marcio, Message.Direction.RECEIVED)
+
+        self.client.force_login(self.marcio)
+        body = self.client.get(MESSAGES_URL).json()
+
+        self.assertEqual([item["id"] for item in body["results"]], [theirs.pk])
+
+    def test_answers_with_metadata_and_never_with_the_blob(self):
+        message = self.create_message(self.diretor, self.marcio, Message.Direction.SENT)
+        response = self.client.get(MESSAGES_URL)
+        item = response.json()["results"][0]
+
+        self.assertEqual(
+            sorted(item),
+            ["createdAt", "direction", "id", "receivedAt", "recipient", "sender", "size"],
+        )
+        self.assertEqual(item["sender"], "diretor")
+        self.assertEqual(item["recipient"], "marcio")
+        self.assertEqual(item["size"], len(bytes(message.blob)))
+        self.assertNotIn(encode_blob(bytes(message.blob)), response.content.decode())
+
+    def test_newest_first(self):
+        older = self.create_message(self.diretor, self.marcio, Message.Direction.SENT)
+        newer = self.create_message(self.diretor, self.marcio, Message.Direction.SENT)
+        for message, day in ((older, 1), (newer, 2)):
+            Message.objects.filter(pk=message.pk).update(
+                received_at=datetime(2026, 9, day, 12, tzinfo=timezone.utc)
+            )
+
+        body = self.client.get(MESSAGES_URL).json()
+
+        self.assertEqual([item["id"] for item in body["results"]], [newer.pk, older.pk])
+
+    def test_paginates(self):
+        for _ in range(PAGE_SIZE + 5):
+            self.create_message(self.diretor, self.marcio, Message.Direction.SENT)
+
+        first = self.client.get(MESSAGES_URL).json()
+        second = self.client.get(MESSAGES_URL, {"page": 2}).json()
+
+        self.assertEqual(first["count"], PAGE_SIZE + 5)
+        self.assertEqual(first["numPages"], 2)
+        self.assertEqual(len(first["results"]), PAGE_SIZE)
+        self.assertEqual(second["page"], 2)
+        self.assertEqual(len(second["results"]), 5)
+
+    def test_requires_login(self):
+        response = Client().get(MESSAGES_URL)
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["code"], "unauthenticated")
+
+    def test_refuses_who_is_not_a_participant(self):
+        self.client.force_login(make_superuser())
+        response = self.client.get(MESSAGES_URL)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "not_participant")
+
+    def test_refuses_other_methods(self):
+        self.assertEqual(self.client.delete(MESSAGES_URL).status_code, 405)

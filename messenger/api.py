@@ -3,6 +3,7 @@ import binascii
 import json
 from functools import wraps
 
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
@@ -18,6 +19,8 @@ KEY_CONFLICT_MESSAGE = (
     "quando os dados deste navegador são apagados ou quando você usa outro navegador. "
     "Restaure o backup da sua chave ou peça ao administrador para liberar um novo registro."
 )
+
+PAGE_SIZE = 20
 
 
 def error_response(status, code, message):
@@ -65,6 +68,18 @@ def decode_blob(value):
         raise InvalidMessage("O arquivo enviado não está em base64 válido.") from None
 
 
+def message_payload(message):
+    return {
+        "id": message.pk,
+        "sender": message.sender.get_username(),
+        "recipient": message.recipient.get_username(),
+        "direction": message.direction,
+        "createdAt": message.created_at.isoformat(),
+        "receivedAt": message.received_at.isoformat(),
+        "size": len(message.blob),
+    }
+
+
 @require_http_methods(["POST"])
 @participant_api
 def publish_public_key(request):
@@ -109,8 +124,28 @@ def fetch_public_key(request, username):
     return JsonResponse(key_payload(target, target.profile))
 
 
-@require_http_methods(["POST"])
+@require_http_methods(["GET", "POST"])
 @participant_api
+def messages(request):
+    if request.method == "POST":
+        return save_message(request)
+    return list_messages(request)
+
+
+def list_messages(request):
+    owned = Message.objects.owned_by(request.user).select_related("sender", "recipient")
+    page = Paginator(owned, PAGE_SIZE).get_page(request.GET.get("page"))
+
+    return JsonResponse(
+        {
+            "results": [message_payload(message) for message in page.object_list],
+            "page": page.number,
+            "numPages": page.paginator.num_pages,
+            "count": page.paginator.count,
+        }
+    )
+
+
 def save_message(request):
     payload = read_json_object(request)
     if payload is None:
@@ -148,13 +183,4 @@ def save_message(request):
         direction=direction,
     )
 
-    return JsonResponse(
-        {
-            "id": message.pk,
-            "direction": message.direction,
-            "createdAt": message.created_at.isoformat(),
-            "receivedAt": message.received_at.isoformat(),
-            "size": len(blob),
-        },
-        status=201,
-    )
+    return JsonResponse(message_payload(message), status=201)
