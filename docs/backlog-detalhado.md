@@ -433,7 +433,7 @@ export function requireSecureContext() {
 - Registrar `Profile` exibindo `user`, `ecdh_public_key` (somente leitura), `key_registered_at` e `fingerprint_verified`.
 - **Critério de aceite**: superusuário consegue ver as chaves públicas cadastradas via `/admin/`.
 
-> `ProfileAdmin` mostra usuário, se há chave, quando foi registrada e se o fingerprint foi verificado; a chave e a data são somente leitura, e o usuário também, depois de criado. A **ação "Apagar a chave pública"** é a "intervenção via Admin" que o write-once do 4.3 exige para trocar de chave: limpa a chave, a data e a verificação. **7 testes** em `messenger/tests/test_admin.py`, junto com o `MessageAdmin` do 6.7.
+> `ProfileAdmin` mostra usuário, se há chave, quando foi registrada e se o fingerprint foi verificado; a chave e a data são somente leitura, e o usuário também, depois de criado. A **ação "Apagar a chave pública"** é a "intervenção via Admin" que o write-once do 4.3 exige para trocar de chave: limpa a chave, a data e a verificação. **8 testes** em `messenger/tests/test_admin.py`, junto com o `MessageAdmin` do 6.7.
 
 ---
 
@@ -765,7 +765,7 @@ Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 > - **Checagem de remetente:** o servidor calcula o `sender_id` esperado (2.5) e recusa com `sender_mismatch` um arquivo cujo cabeçalho aponte o outro usuário. Não dá para registrar como "enviada por mim" uma mensagem que o cabeçalho diz ter sido escrita pelo outro.
 > - O parser do cabeçalho (`messenger/message_format.py`) espelha o `format.js`: magic, versão, bits reservados, `sender_id` e `created_at` com precisão de milissegundo. Arquivos acima de 1 MB são recusados (13.5).
 >
-> **11 testes** em `test_messages_api.py` e **11** em `test_message_format.py`.
+> **19 testes** em `test_messages_api.py` (11 aqui, 8 no 6.3) e **12** em `test_message_format.py`.
 
 ### 6.3 Endpoint: listar histórico ✅
 
