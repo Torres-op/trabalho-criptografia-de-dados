@@ -7,8 +7,14 @@ import {
   openSession,
   readMessage,
 } from "../messenger/static/messenger/js/app.js";
-import { deriveKey } from "../messenger/static/messenger/js/crypto.js";
-import { HEADER_SIZE, TAG_SIZE, unpack } from "../messenger/static/messenger/js/format.js";
+import { deriveKey, encrypt } from "../messenger/static/messenger/js/crypto.js";
+import {
+  HEADER_SIZE,
+  TAG_SIZE,
+  buildAad,
+  pack,
+  unpack,
+} from "../messenger/static/messenger/js/format.js";
 import {
   ensureKeyPair,
   exportPublicKey,
@@ -76,6 +82,39 @@ describe("metadados da mensagem", () => {
   it("sugere um nome de arquivo válido", async () => {
     const { name } = await composeMessage("teste", chaveDaAlice);
     expect(name).toMatch(/^msg-\d{8}-\d{6}\.msgenc$/);
+  });
+});
+
+describe("timestamp suspeito (revisão de código)", () => {
+  it("não sinaliza created_at recém-gerado", async () => {
+    const { file } = await composeMessage("mensagem normal", chaveDaAlice);
+    const lida = await readMessage(file, chaveDoBob);
+    expect(lida.suspiciousCreatedAt).toBe(false);
+  });
+
+  it("propaga suspiciousCreatedAt até readMessage quando created_at é antigo", async () => {
+    const createdAt = Date.UTC(2020, 0, 1);
+    const compressed = false;
+    const aad = buildAad({ senderId: SENDER_ID, createdAt, compressed });
+    const texto = new TextEncoder().encode("mensagem antiga");
+    const { iv, ciphertext } = await encrypt(texto, chaveDaAlice, aad);
+    const file = pack({ senderId: SENDER_ID, createdAt, compressed, iv, ciphertext });
+
+    const lida = await readMessage(file, chaveDoBob);
+    expect(lida.suspiciousCreatedAt).toBe(true);
+    expect(lida.text).toBe("mensagem antiga");
+  });
+
+  it("propaga suspiciousCreatedAt quando created_at está no futuro distante", async () => {
+    const createdAt = Date.now() + 48 * 60 * 60 * 1000;
+    const compressed = false;
+    const aad = buildAad({ senderId: SENDER_ID, createdAt, compressed });
+    const texto = new TextEncoder().encode("mensagem do futuro");
+    const { iv, ciphertext } = await encrypt(texto, chaveDaAlice, aad);
+    const file = pack({ senderId: SENDER_ID, createdAt, compressed, iv, ciphertext });
+
+    const lida = await readMessage(file, chaveDoBob);
+    expect(lida.suspiciousCreatedAt).toBe(true);
   });
 });
 

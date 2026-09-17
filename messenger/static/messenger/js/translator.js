@@ -92,7 +92,10 @@ async function process(file) {
     meta.textContent =
       `Escrita em ${ui.formatDate(message.createdAt)} · ` +
       `remetente ${message.senderId} · ` +
-      `${ui.formatBytes(message.fileBytes)}`;
+      `${ui.formatBytes(message.fileBytes)}` +
+      (message.suspiciousCreatedAt
+        ? " · ⚠️ data de criação improvável — confira o relógio dos dispositivos"
+        : "");
     result.hidden = false;
     ui.showStatus(status, "success", "Mensagem decifrada", file.name);
   } catch (error) {
