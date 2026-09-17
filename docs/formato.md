@@ -31,8 +31,6 @@ Não há envelope JSON nem base64 no arquivo binário. Um envelope JSON com base
 | 15 | 12 | `iv` | Vetor de inicialização do AES-GCM, aleatório e único por mensagem |
 | 27 | N | `ciphertext` | Conteúdo cifrado; os **últimos 16 bytes** são a tag de autenticação GCM |
 
-**Tamanho mínimo do arquivo:** 27 (cabeçalho) + 16 (tag, mesmo com payload vazio) = **43 bytes**.
-
 **AAD (offsets 0–14, 15 bytes):** `magic || version || flags || sender_id || created_at`. Não inclui o IV.
 
 ### Bits do campo `flags`
@@ -48,24 +46,33 @@ Quando bit 0 é `0`, é porque o `encode` comparou o resultado do Huffman com o 
 
 ## 3. Validação obrigatória na leitura
 
-Um leitor correto rejeita o arquivo **antes** de chamar a operação de descriptografia, nesta ordem, cada uma com mensagem própria:
+Há **duas camadas** de checagem, em módulos diferentes — a distinção importa porque cada uma rejeita um problema diferente:
 
-1. Arquivo menor que 28 bytes (cabeçalho completo + pelo menos 1 byte de conteúdo cifrado com tag).
+**Camada 1 — forma do envelope (`unpack`).** Rejeita, nesta ordem, antes de examinar o `ciphertext`:
+
+1. Arquivo menor que 28 bytes (cabeçalho completo de 27 bytes + pelo menos 1 byte de conteúdo).
 2. `magic` diferente de `"MENC"`.
 3. `version` desconhecida (diferente de `0x01`, nesta especificação).
 4. Algum bit reservado de `flags` (bits 1–7) ligado.
 5. `sender_id` fora de `{0, 1}`.
 
-Depois dessas, uma checagem **não bloqueante**: se `created_at` for anterior a `2024-01-01T00:00:00Z` ou mais de 24h no futuro em relação ao relógio local, o app deve **avisar** o usuário, mas continuar tentando decifrar — um relógio dessincronizado de um dos lados não deve impedir a leitura de uma mensagem legítima.
+Esse é o mínimo para que os campos do cabeçalho possam ser lidos — **não** garante que o arquivo seja decifrável. Um arquivo de 28 a 42 bytes passa por esta camada inteira.
 
-Só depois de passar por tudo isso o `ciphertext` é entregue ao AES-GCM. Uma falha na tag de autenticação (`ciphertext` ou AAD adulterados) é reportada como "arquivo adulterado ou chave incorreta" — nunca como texto parcial ou incorreto.
+**Camada 2 — autenticidade (`decrypt`).** O `ciphertext` só é entregue à operação de descriptografia depois de confirmar que tem pelo menos `TAG_SIZE` (16) bytes — o tamanho da tag GCM sozinha, sem conteúdo. Um `ciphertext` mais curto que isso é rejeitado antes de chamar `crypto.subtle.decrypt`, com uma mensagem própria ("Arquivo corrompido: conteúdo menor que a assinatura") — a implementação nunca tenta autenticar um ciphertext que estruturalmente não poderia conter a tag.
+
+Um arquivo só é uma mensagem válida quando passa pelas **duas** camadas. Por isso o tamanho mínimo de uma mensagem real é:
+
+mesmo a camada 1 aceitando estruturalmente qualquer coisa a partir de 28 bytes — esses 28–42 bytes nunca chegam a decifrar.
+
+Depois das duas camadas, uma checagem **não bloqueante**: se `created_at` for anterior a `2024-01-01T00:00:00Z` ou mais de 24h no futuro em relação ao relógio local, o app deve **avisar** o usuário, mas continuar a leitura normalmente — um relógio dessincronizado de um dos lados não deve impedir a leitura de uma mensagem legítima.
+
+Uma falha na tag de autenticação (`ciphertext` ou AAD adulterados) é reportada como "arquivo adulterado ou chave incorreta" — nunca como texto parcial ou incorreto.
 
 ---
 
 ## 4. Derivação da chave (D4)
 
 Os dois lados da conversa precisam chegar à **mesma** chave AES-256-GCM de forma independente:
-
 
 **Pontos que precisam ser exatos para interoperar:**
 
@@ -80,12 +87,12 @@ Os dois lados da conversa precisam chegar à **mesma** chave AES-256-GCM de form
 
 Para canais que não aceitam anexo binário confortavelmente (WhatsApp, corpo de e-mail via `mailto:`, que **não consegue anexar arquivos**), o mesmo conteúdo binário do `.msgenc` pode ser representado como texto:
 
-
 Regras de leitura (`fromArmor`):
 
 - Os marcadores são localizados por busca de substring, então **texto antes e depois do bloco é ignorado** — o WhatsApp e o cliente de e-mail costumam adicionar contexto ao redor do que foi colado.
 - Espaços em branco e quebras de linha **dentro** do bloco (entre os marcadores) são ignorados antes da decodificação base64.
 - Ausência de qualquer um dos dois marcadores, marcadores fora de ordem, bloco vazio, ou conteúdo que não decodifica como base64 válido são todos rejeitados com mensagem específica — nunca um erro genérico de parsing.
+- `toArmor` rejeita `Uint8Array` vazio com o mesmo erro de "bloco vazio" que `fromArmor` usa na leitura — os dois lados compartilham o mesmo contrato, então nenhum valor aceito por um é rejeitado pelo outro.
 
 ---
 
@@ -100,8 +107,6 @@ Gerado por uma execução real do pipeline (não um exemplo inventado à mão): 
 - `compressed`: `true` (flag ligada — o payload já veio de `huffman.encode`, aqui simulado)
 
 **Arquivo `.msgenc` resultante — 71 bytes, dump em hex:**
-
-
 
 **Leitura campo a campo:**
 
@@ -119,7 +124,6 @@ O `ciphertext` decifra de volta para exatamente `"Reunião confirmada às 15h."`
 
 **O mesmo arquivo em formato armored:**
 
-
 Este bloco, colado com texto ao redor (por exemplo `"Oi! segue a mensagem:\n\n-----BEGIN MENC-----...\n\nMe avisa quando ler 🙏"`), ainda é lido corretamente pelo `fromArmor` — testado na prática, não apenas descrito.
 
 ---
@@ -129,6 +133,8 @@ Este bloco, colado com texto ao redor (por exemplo `"Oi! segue a mensagem:\n\n--
 - [ ] `created_at` é lido/escrito como inteiro sem sinal de 64 bits **big-endian** — atenção especial em linguagens onde o padrão é little-endian.
 - [ ] O AAD passado ao AES-GCM é exatamente `bytes[0:15]` — nunca o cabeçalho inteiro (que inclui o IV) nem só parte dos campos.
 - [ ] A tag de 16 bytes do GCM fica **dentro** do `ciphertext`, no final — não é um campo separado no layout.
+- [ ] `unpack` aceita a partir de 28 bytes; um leitor completo só considera a mensagem válida depois que `ciphertext.length >= TAG_SIZE` também é checado, antes de decifrar.
 - [ ] A ordenação dos usernames para o salt do HKDF é por comparação de code points, não por coleção/locale da linguagem de implementação.
 - [ ] O separador entre usernames no material do salt é o byte `0x00`, não uma string vazia nem outro caractere.
 - [ ] Um arquivo com bits reservados de `flags` ligados é rejeitado, não tolerado.
+- [ ] `toArmor` e `fromArmor` compartilham o mesmo contrato para entrada vazia: ambos tratam como erro.
