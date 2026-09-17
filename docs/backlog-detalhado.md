@@ -1,4 +1,13 @@
-# Backlog Detalhado — Treehash (Django + JS)
+| **12.5 — `search-tree.js` e painel no compositor** | A organização da árvore precisa aparecer para o usuário. A árvore organiza e exibe; o conteúdo do arquivo não muda por causa dela |
+| **Valor do nó = código × quantidade, com desempate pelo código** | Formato pedido pelo cliente. A multiplicação não garante valor único: dois espaços e um `@` valem 64 |
+| **Painel de compressão fora da tela (7.5)** | Pedido do cliente: o usuário não precisa ver esses números. O Huffman continua comprimindo o arquivo |
+| **Árvore montada passo a passo, com arrastar e zoom** | Mostrar como ela se organiza, e não só o resultado pronto |
+| **Percurso em ordem ao lado da árvore** | Cabe melhor na tela; abaixo de 720px volta a empilhar |
+| **Valor do nó = código × quantidade, com desempate pelo código** | Formato pedido pelo cliente. A multiplicação não garante valor único: dois espaços e um `@` valem 64 |
+| **Painel de compressão fora da tela (7.5)** | Pedido do cliente: o usuário não precisa ver esses números. O Huffman continua comprimindo o arquivo |
+| **Árvore montada passo a passo, com arrastar e zoom** | Mostrar como ela se organiza, e não só o resultado pronto |
+| **Percurso em ordem ao lado da árvore** | Cabe melhor na tela; abaixo de 720px volta a empilhar |
+| **Ordenar o texto antes de comprimir: descartado**# Backlog Detalhado — Treehash (Django + JS)
 
 > **Stack:** Django (backend/API/Admin) + JavaScript puro no navegador (Huffman + Web Crypto API para toda a criptografia).
 > **Princípio central:** o servidor nunca vê texto puro nem chaves privadas. Ele guarda apenas blobs cifrados e chaves públicas.
@@ -543,6 +552,8 @@ Compressão
 
 > **Nota corrigida no Épico 4.** Ela dizia "27 bytes fixos de cabeçalho", número correto enquanto a cifragem era XOR. Com o AES-GCM real entra a tag de autenticação de 16 bytes, e o custo fixo passou a **43 bytes**. A nota agora discrimina as duas parcelas, e o texto e os testes usam `HEADER_SIZE + TAG_SIZE` em vez de números soltos — foi o valor cravado no código que deixou a documentação envelhecer sem avisar.
 >
+> **O painel saiu da interface no 12.5** (17/09/2026, pedido do cliente): `stats()` e `measure()` continuam no `huffman.js` e testados, só a exibição foi removida.
+>
 > **Ponto de equilíbrio medido: 96 caracteres.** Abaixo disso o arquivo sai maior que o texto; acima, menor. A nota diz "por volta de 100 caracteres", e há teste garantindo que o valor real fica entre 60 e 140 — se o formato mudar de tamanho, a suíte acusa que a frase da tela ficou mentirosa.
 
 ---
@@ -848,7 +859,7 @@ texto
 
 > ✅ O título do erro indica a etapa (*Falha na compressão*, *Falha na cifragem*, *Falha ao montar o arquivo*). O download acontece **antes** da gravação no histórico: se o servidor falhar, o arquivo já foi entregue e a tela mostra um aviso amarelo — *"Arquivo gerado, mas não foi salvo no histórico"* — com o motivo.
 
-### 7.5 Painel de estatísticas de compressão ✅
+### 7.5 Painel de estatísticas de compressão ❌ removido da interface
 > Esta é a evidência visual de que a árvore de Huffman está fazendo trabalho real — vale mais para a apresentação do que várias features.
 
 Após gerar, exibir:
@@ -860,6 +871,8 @@ Bits/caractere:   4,31       (UTF-8: 8,32)
 ```
 - Quando o fallback do 3.3 for acionado, exibir "compressão dispensada (texto muito curto)".
 - **Critério de aceite**: os números conferem com o tamanho real do arquivo baixado.
+
+> ❌ **Fora da tela desde 17/09/2026, a pedido do cliente.** O usuário não precisa ver os números da compressão. O Huffman continua comprimindo o arquivo, e `stats()`/`measure()` (3.6) continuam no `huffman.js`, testados — o que saiu foi só a exibição. Para trazer de volta, basta voltar a renderizar `last.stats` no `compose.js`.
 
 ---
 
@@ -1050,16 +1063,30 @@ Se um usuário perde a chave e nenhum backup funciona, o outro ainda tem a dele 
 - Qualquer sinal negativo leva, com um clique, à ação que o resolve.
 - **Critério de aceite**: o usuário identifica em um olhar se o canal está pronto para uso e se sua chave está protegida contra perda.
 
-### 12.5 Visualização da árvore binária de busca ✅
+### 12.5 Árvore Binária de Busca na tela ✅
 
-> Pedido em 17/09/2026: a organização da árvore precisa aparecer para o usuário.
+> Pedido em 17/09/2026: a organização da árvore precisa aparecer para o usuário, com cada caractere virando um valor e a árvore sendo remontada a cada mensagem.
 
-- Módulo `search-tree.js`: inserção, busca (devolvendo o caminho percorrido), percurso em ordem, soma de bits e posicionamento para desenho. A chave é o ponto de código do caractere, e a ordem de inserção é a de primeira aparição no texto — é ela que dá forma à árvore.
-- Painel no compositor, abaixo do painel de compressão (7.5): SVG com caractere, contagem e código em cada nó, mais a tabela do percurso em ordem. Só no compositor; o tradutor fica para depois, se fizer falta.
-- **A árvore de busca não entra no pipeline.** Ela organiza e exibe; o arquivo continua sendo Huffman canônico sobre bytes (D1–D3), byte a byte idêntico ao de antes. O formato travado e os arquivos já gerados seguem válidos.
-- **Ordenar o texto antes de comprimir foi descartado**, e vale registrar o porquê: a ordem dos caracteres *é* a mensagem. Ler a árvore em ordem devolveria "oov" para "ovo", e desfazer isso exigiria guardar a permutação — log₂(n!) bits, cerca de 65 bytes numa frase de 100 caracteres, mais do que a compressão inteira economiza.
-- Os códigos exibidos vêm do códebook fixo. Caractere fora do ASCII ocupa mais de um byte (D1) e aparece com um código por byte.
-- **Critério de aceite**: a árvore muda conforme o texto; o percurso em ordem devolve o alfabeto ordenado; a soma dos bits bate com o arquivo real. ✅ **21 testes** em `tests/search-tree.test.js`, incluindo a conferência contra o encoder.
+**Como o valor é formado**
+
+- **Valor do nó = código do caractere × quantas vezes ele aparece.** Como o valor depende da contagem, a árvore só pode ser montada depois de ler a mensagem inteira, e é remontada do zero a cada uma: `a` sozinho vale 97, `aa` vale 194.
+- **O valor não é único, ao contrário do que parece.** Dois espaços valem 32 × 2 = 64 e um `@` sozinho também vale 64; um `d` vale 100 e dois `2` também. O desempate é pelo código do caractere — sem ele a árvore fica ambígua. A tela avisa quando a mensagem tem um empate desses.
+- A ordem de inserção é a de primeira aparição no texto, e é ela que dá forma à árvore. Texto cujos valores já chegam em ordem crescente produz uma árvore degenerada, e o desenho mostra isso.
+- Caracteres fora do ASCII usam o ponto de código Unicode: a tabela ASCII vai só até 127, e `ç` (231) ou emoji não cabem nela.
+
+**Como aparece na tela**
+
+- **A árvore é montada passo a passo**, um nó por vez, destacando o nó que acabou de entrar e o caminho de comparações que levou até ele — é isso que mostra *como* a árvore se organiza, e não só o resultado. A montagem inteira leva cerca de 5 segundos, com o passo ajustado ao número de nós.
+- Botões *Mostrar tudo* (pula para o fim) e *Montar de novo* (repete a montagem), mais *Centralizar* para reenquadrar.
+- **Arrastar move a árvore e o scroll aproxima ou afasta**, entre 0,2× e 3×. Enquanto o usuário não mexer, o enquadramento se ajusta sozinho a cada passo; depois que ele mexe, a visão fica onde ele deixou.
+- O percurso em ordem fica **ao lado** da árvore, numa tabela rolável com cabeçalho fixo, destacando a linha do nó recém-inserido. Abaixo de 720px de largura, a tabela desce para baixo da árvore.
+- Quem tem `prefers-reduced-motion` ligado recebe a árvore pronta, sem animação.
+
+**Limites**
+
+- `search-tree.js` faz contagem, inserção, busca devolvendo o caminho percorrido, percurso em ordem, altura, detecção de empates e posicionamento para desenho. `tree-view.js` cuida do SVG, do arrastar e do zoom.
+- Só no compositor. **A árvore não entra no pipeline do arquivo**: ela organiza e exibe, e o conteúdo cifrado não muda por causa dela.
+- **Critério de aceite**: a árvore muda a cada mensagem; a montagem é visível passo a passo; o percurso em ordem devolve os valores em ordem crescente; empates aparecem na tela. ✅ **32 testes** em `tests/search-tree.test.js`.
 
 ---
 
@@ -1262,7 +1289,11 @@ docker compose --profile tunnel up tunnel
 
 | Mudança | Motivo |
 |---|---|
-| **12.5 — `search-tree.js` e painel no compositor** | A organização da árvore precisa aparecer para o usuário. A BST organiza e mostra; o pipeline segue Huffman canônico sobre bytes, sem alterar um byte do arquivo |
+| **12.5 — `search-tree.js` e painel no compositor** | A organização da árvore precisa aparecer para o usuário. A árvore organiza e exibe; o conteúdo do arquivo não muda por causa dela |
+| **Valor do nó = código × quantidade, com desempate pelo código** | Formato pedido pelo cliente. A multiplicação não garante valor único: dois espaços e um `@` valem 64 |
+| **Painel de compressão fora da tela (7.5)** | Pedido do cliente: o usuário não precisa ver esses números. O Huffman continua comprimindo o arquivo |
+| **Árvore montada passo a passo, com arrastar e zoom** | Mostrar como ela se organiza, e não só o resultado pronto |
+| **Percurso em ordem ao lado da árvore** | Cabe melhor na tela; abaixo de 720px volta a empilhar |
 | **Ordenar o texto antes de comprimir: descartado** | A ordem dos caracteres é a mensagem, e guardar a permutação para desfazer custa mais que a compressão economiza |
 
 ### Revisão 7 — Épico 5 integrado e listagem do histórico corrigida
