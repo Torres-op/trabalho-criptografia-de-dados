@@ -7,8 +7,14 @@ import {
   senderIdFor,
   senderNameFor,
 } from "../messenger/static/messenger/js/app.js";
-import { deriveKey } from "../messenger/static/messenger/js/crypto.js";
-import { HEADER_SIZE, TAG_SIZE, unpack } from "../messenger/static/messenger/js/format.js";
+import { deriveKey, encrypt } from "../messenger/static/messenger/js/crypto.js";
+import {
+  HEADER_SIZE,
+  TAG_SIZE,
+  buildAad,
+  pack,
+  unpack,
+} from "../messenger/static/messenger/js/format.js";
 import { generateKeyPair } from "../messenger/static/messenger/js/keys.js";
 
 const TEXTOS = {
@@ -146,5 +152,36 @@ describe("identidade do remetente (D5)", () => {
 describe("estado da implementação", () => {
   it("não sinaliza mais implementação falsa", () => {
     expect(isFakeImplementation()).toBe(false);
+  });
+});
+
+describe("aviso de created_at suspeito (5.2)", () => {
+  async function fileWithCreatedAt(createdAt, text) {
+    const senderId = sessaoDaAlice.senderId;
+    const aad = buildAad({ senderId, createdAt, compressed: false });
+    const { iv, ciphertext } = await encrypt(
+      new TextEncoder().encode(text),
+      sessaoDaAlice.aesKey,
+      aad
+    );
+    return pack({ senderId, createdAt, compressed: false, iv, ciphertext });
+  }
+
+  it("não sinaliza uma mensagem recém-criada", async () => {
+    const { file } = await composeMessage("mensagem normal", sessaoDaAlice);
+    expect((await readMessage(file, sessaoDoBob)).suspiciousCreatedAt).toBe(false);
+  });
+
+  it("sinaliza created_at anterior a 2024 sem impedir a leitura", async () => {
+    const file = await fileWithCreatedAt(Date.UTC(2020, 0, 1), "mensagem antiga");
+    const lida = await readMessage(file, sessaoDoBob);
+
+    expect(lida.suspiciousCreatedAt).toBe(true);
+    expect(lida.text).toBe("mensagem antiga");
+  });
+
+  it("sinaliza created_at mais de 24h no futuro", async () => {
+    const file = await fileWithCreatedAt(Date.now() + 48 * 60 * 60 * 1000, "mensagem do futuro");
+    expect((await readMessage(file, sessaoDoBob)).suspiciousCreatedAt).toBe(true);
   });
 });

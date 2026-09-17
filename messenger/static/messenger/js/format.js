@@ -14,6 +14,12 @@ export const IV_SIZE = 12;
 export const HEADER_SIZE = 27;
 export const TAG_SIZE = 16;
 export const EXTENSION = ".treehash";
+export const EARLIEST_VALID_CREATED_AT = Date.UTC(2024, 0, 1);
+export const FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
+
+export function isCreatedAtSuspicious(createdAt) {
+  return createdAt < EARLIEST_VALID_CREATED_AT || createdAt > Date.now() + FUTURE_TOLERANCE_MS;
+}
 
 export function buildAad({ senderId, createdAt, compressed }) {
   validateSenderId(senderId);
@@ -89,6 +95,7 @@ export function unpack(bytes) {
     iv: bytes.slice(AAD_SIZE, HEADER_SIZE),
     ciphertext: bytes.slice(HEADER_SIZE),
     aad: bytes.slice(0, AAD_SIZE),
+    suspiciousCreatedAt: isCreatedAtSuspicious(createdAt),
   };
 }
 

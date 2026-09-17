@@ -127,5 +127,6 @@ export async function readMessage(file, session) {
     senderId: header.senderId,
     compressed: header.compressed,
     fileBytes: file.length,
+    suspiciousCreatedAt: header.suspiciousCreatedAt,
   };
 }
