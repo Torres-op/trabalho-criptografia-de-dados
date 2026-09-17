@@ -1,4 +1,4 @@
-# Formato de arquivo `.msgenc` (v1)
+# Formato de arquivo `.treehash` (v1)
 
 Referência: decisões **D4**, **D5** e **D6** de [`backlog-detalhado.md`](backlog-detalhado.md).
 
@@ -8,7 +8,7 @@ Este documento é suficiente para reimplementar o parser e o gerador do zero, em
 
 ## 1. Visão geral
 
-Um arquivo `.msgenc` é um envelope binário com:
+Um arquivo `.treehash` é um envelope binário com:
 
 1. Um cabeçalho fixo de **27 bytes**, com campos de controle e o vetor de inicialização (IV).
 2. Um `ciphertext` de tamanho variável, produzido por AES-256-GCM, com a **tag de autenticação de 16 bytes já embutida no final**.
@@ -23,7 +23,7 @@ Não há envelope JSON nem base64 no arquivo binário. Um envelope JSON com base
 
 | Offset | Tamanho | Campo | Descrição |
 |---|---|---|---|
-| 0 | 4 | `magic` | Bytes fixos `"MENC"` → `0x4D 0x45 0x4E 0x43` |
+| 0 | 4 | `magic` | Bytes fixos `"TRHS"` → `0x54 0x52 0x48 0x53` |
 | 4 | 1 | `version` | `0x01` nesta versão |
 | 5 | 1 | `flags` | bit 0 = payload comprimido (Huffman); bits 1–7 reservados, devem ser `0` |
 | 6 | 1 | `sender_id` | `0` ou `1` — índice do remetente na lista de usernames em ordem alfabética |
@@ -51,7 +51,7 @@ Há **duas camadas** de checagem, em módulos diferentes — a distinção impor
 **Camada 1 — forma do envelope (`unpack`).** Rejeita, nesta ordem, antes de examinar o `ciphertext`:
 
 1. Arquivo menor que 28 bytes (cabeçalho completo de 27 bytes + pelo menos 1 byte de conteúdo).
-2. `magic` diferente de `"MENC"`.
+2. `magic` diferente de `"TRHS"`.
 3. `version` desconhecida (diferente de `0x01`, nesta especificação).
 4. Algum bit reservado de `flags` (bits 1–7) ligado.
 5. `sender_id` fora de `{0, 1}`.
@@ -61,6 +61,10 @@ Esse é o mínimo para que os campos do cabeçalho possam ser lidos — **não**
 **Camada 2 — autenticidade (`decrypt`).** O `ciphertext` só é entregue à operação de descriptografia depois de confirmar que tem pelo menos `TAG_SIZE` (16) bytes — o tamanho da tag GCM sozinha, sem conteúdo. Um `ciphertext` mais curto que isso é rejeitado antes de chamar `crypto.subtle.decrypt`, com uma mensagem própria ("Arquivo corrompido: conteúdo menor que a assinatura") — a implementação nunca tenta autenticar um ciphertext que estruturalmente não poderia conter a tag.
 
 Um arquivo só é uma mensagem válida quando passa pelas **duas** camadas. Por isso o tamanho mínimo de uma mensagem real é:
+
+```
+27 (cabeçalho) + 16 (tag GCM) = 43 bytes
+```
 
 mesmo a camada 1 aceitando estruturalmente qualquer coisa a partir de 28 bytes — esses 28–42 bytes nunca chegam a decifrar.
 
@@ -74,18 +78,31 @@ Uma falha na tag de autenticação (`ciphertext` ou AAD adulterados) é reportad
 
 Os dois lados da conversa precisam chegar à **mesma** chave AES-256-GCM de forma independente:
 
+```
+segredo = ECDH.deriveBits(privadaLocal, publicaDoOutro, 256)
+salt    = SHA-256( utf8( usernameMenor + "\x00" + usernameMaior ) )
+info    = utf8( "treehash/v1/aes-gcm-256" )
+aesKey  = HKDF-SHA256( segredo, salt, info ) → AES-GCM 256 bits
+```
+
 **Pontos que precisam ser exatos para interoperar:**
 
 - A ordenação dos usernames usa comparação de **unidades de código** (`a < b` em JS, equivalente a comparação byte a byte de strings ASCII), **não** `localeCompare` — a ordenação por locale pode variar entre sistemas e produziria salts diferentes para a mesma dupla de usuários.
 - O separador entre os dois usernames no material do salt é o byte `0x00` (NUL) — sem ele, duplas como `("ana", "luiza-silva")` e `("ana-luiza", "silva")` colidiriam no mesmo salt.
-- `info` é a string fixa `"msgenc/v1/aes-gcm-256"`, codificada em UTF-8.
+- `info` é a string fixa `"treehash/v1/aes-gcm-256"`, codificada em UTF-8.
 - A chave derivada é marcada como **não extraível** — nunca deve ser exportável de volta para bytes.
 
 ---
 
 ## 5. Formato armored (D6)
 
-Para canais que não aceitam anexo binário confortavelmente (WhatsApp, corpo de e-mail via `mailto:`, que **não consegue anexar arquivos**), o mesmo conteúdo binário do `.msgenc` pode ser representado como texto:
+Para canais que não aceitam anexo binário confortavelmente (WhatsApp, corpo de e-mail via `mailto:`, que **não consegue anexar arquivos**), o mesmo conteúdo binário do `.treehash` pode ser representado como texto:
+
+```
+-----BEGIN TREEHASH-----
+<base64 do arquivo binário, em linhas de até 64 caracteres>
+-----END TREEHASH-----
+```
 
 Regras de leitura (`fromArmor`):
 
@@ -104,27 +121,42 @@ Gerado por uma execução real do pipeline (não um exemplo inventado à mão): 
 - Texto: `"Reunião confirmada às 15h."`
 - `sender_id`: `0`
 - `created_at`: `1789569127000` (2026-09-16T14:32:07.000Z)
-- `compressed`: `true` (flag ligada — o payload já veio de `huffman.encode`, aqui simulado)
+- `compressed`: `true` — o `huffman.encode` reduziu os 28 bytes de UTF-8 do texto para 22
 
-**Arquivo `.msgenc` resultante — 71 bytes, dump em hex:**
+**Arquivo `.treehash` resultante — 65 bytes, dump em hex:**
+
+```
+54 52 48 53 01 01 00 00 00 01 a0 aa a1 d2 58 a8
+0d 87 e3 dc ef 40 8a da 09 7d 95 c3 98 89 d7 06
+67 60 6b d4 8b fa 12 3e b4 28 62 ef 36 0e 62 db
+73 67 55 8e 1f 23 f7 5e 5b a7 b8 80 a1 af 4e 5a
+13
+```
 
 **Leitura campo a campo:**
 
 | Campo | Bytes (hex) | Valor |
 |---|---|---|
-| `magic` | `4d 45 4e 43` | `"MENC"` |
+| `magic` | `54 52 48 53` | `"TRHS"` |
 | `version` | `01` | `1` |
 | `flags` | `01` | bit 0 ligado → comprimido |
 | `sender_id` | `00` | `0` |
 | `created_at` | `00 00 01 a0 aa a1 d2 58` | `1789569127000` → `2026-09-16T14:32:07.000Z` |
-| `iv` (12 bytes) | `c4 01 67 01 85 25 ad 3e 0a ca 67 23` | — |
-| `ciphertext` (44 bytes, últimos 16 = tag) | `dd c4 d6 8f f8 15 a0 74 ...` | 28 bytes de conteúdo cifrado + 16 de tag |
+| `iv` (12 bytes) | `a8 0d 87 e3 dc ef 40 8a da 09 7d 95` | — |
+| `ciphertext` (38 bytes, últimos 16 = tag) | `c3 98 89 d7 06 67 60 6b …` | 22 bytes de conteúdo cifrado + 16 de tag |
 
 O `ciphertext` decifra de volta para exatamente `"Reunião confirmada às 15h."` com a chave AES original — confirmado por execução real, não apenas por inspeção do layout.
 
 **O mesmo arquivo em formato armored:**
 
-Este bloco, colado com texto ao redor (por exemplo `"Oi! segue a mensagem:\n\n-----BEGIN MENC-----...\n\nMe avisa quando ler 🙏"`), ainda é lido corretamente pelo `fromArmor` — testado na prática, não apenas descrito.
+```
+-----BEGIN TREEHASH-----
+VFJIUwEBAAAAAaCqodJYqA2H49zvQIraCX2Vw5iJ1wZnYGvUi/oSPrQoYu82DmLb
+c2dVjh8j915bp7iAoa9OWhM=
+-----END TREEHASH-----
+```
+
+Este bloco, colado com texto ao redor (por exemplo `"Oi! segue a mensagem:\n\n-----BEGIN TREEHASH-----...\n\nMe avisa quando ler 🙏"`), ainda é lido corretamente pelo `fromArmor` — testado na prática, não apenas descrito.
 
 ---
 

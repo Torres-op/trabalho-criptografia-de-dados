@@ -9,7 +9,7 @@ import {
 } from "../messenger/static/messenger/js/armor.js";
 
 const amostra = () =>
-  new Uint8Array([0x4d, 0x45, 0x4e, 0x43, 1, 0, 0, 255, 254, 253, 10, 20, 30]);
+  new Uint8Array([0x54, 0x52, 0x48, 0x53, 1, 0, 0, 255, 254, 253, 10, 20, 30]);
 
 describe("formato armored (D6)", () => {
   it("envolve o conteúdo com os marcadores esperados", () => {

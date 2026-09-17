@@ -149,35 +149,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   margin-top: 4px;
 }
 
-.stats {
-  width: 100%;
-  margin-top: 20px;
-  border-collapse: collapse;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.stats caption {
-  text-align: left;
-  font-weight: 600;
-  font-size: 0.85rem;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.stats th,
-.stats td {
-  padding: 8px 12px;
-  text-align: left;
-  border-top: 1px solid var(--border);
-  font-weight: 400;
-}
-
-.stats th { color: var(--muted); width: 40%; }
-.stats td { font-variant-numeric: tabular-nums; }
-
 .output {
   margin: 0;
   padding: 14px;
@@ -210,7 +181,214 @@ code {
   font-size: 0.9em;
 }
 
+.topbar { flex-wrap: wrap; }
+
+.account {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.logout-form { margin: 0; }
+
+.link-button {
+  padding: 0;
+  font-weight: 400;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 0;
+  text-decoration: underline;
+}
+
+.link-button:hover:not(:disabled) { color: var(--text); filter: none; }
+
+.login-card {
+  max-width: 360px;
+  margin: 48px auto 0;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.login-card h1 { margin-bottom: 16px; }
+
+.login-card form { display: flex; flex-direction: column; }
+
+.login-card input[type="text"],
+.login-card input[type="password"] {
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.login-card input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.login-card .status { margin: 0 0 14px; }
+
+.status--warning { background: var(--warning-bg); border-color: var(--warning-border); }
+
 @media (max-width: 480px) {
   .row { flex-direction: column; align-items: stretch; }
-  button { width: 100%; }
+  button:not(.link-button) { width: 100%; }
+}
+
+#tree-panel {
+  margin-top: 28px;
+}
+
+.tree-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+#tree-panel h2 {
+  font-size: 1.05rem;
+  margin: 0 0 6px;
+}
+
+.tree-controls {
+  display: flex;
+  gap: 14px;
+}
+
+.tree-layout {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+  margin: 14px 0 8px;
+}
+
+.tree-view {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 320px;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.tree-view.is-panning {
+  cursor: grabbing;
+}
+
+.tree-side {
+  flex: 0 0 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.tree-edge {
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.tree-edge--path {
+  stroke: var(--accent);
+}
+
+.tree-node circle {
+  fill: var(--surface);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.tree-node--path circle {
+  stroke: var(--accent);
+}
+
+.tree-node--current circle {
+  fill: var(--success-bg);
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.tree-value {
+  font-size: 11px;
+  fill: var(--text);
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-variant-numeric: tabular-nums;
+}
+
+.tree-char {
+  font-size: 11px;
+  fill: var(--muted);
+  text-anchor: middle;
+}
+
+.codes {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.codes caption {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8rem;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.codes th,
+.codes td {
+  padding: 4px 10px;
+  text-align: left;
+  border-top: 1px solid var(--border);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.codes thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.75rem;
+  border-top: 0;
+}
+
+.codes tbody th {
+  font-weight: 600;
+}
+
+.codes tbody tr.is-current {
+  background: var(--success-bg);
+}
+
+@media (max-width: 720px) {
+  .tree-layout {
+    flex-direction: column;
+  }
+
+  .tree-view {
+    height: 260px;
+  }
+
+  .tree-side {
+    flex: 1 1 auto;
+    max-height: 200px;
+  }
 }

@@ -5,8 +5,8 @@ export class ArmorError extends Error {
   }
 }
 
-export const ARMOR_HEADER = "-----BEGIN MENC-----";
-export const ARMOR_FOOTER = "-----END MENC-----";
+export const ARMOR_HEADER = "-----BEGIN TREEHASH-----";
+export const ARMOR_FOOTER = "-----END TREEHASH-----";
 export const LINE_LENGTH = 64;
 
 export function toArmor(bytes) {

@@ -5,7 +5,7 @@ export class FormatError extends Error {
   }
 }
 
-export const MAGIC = Object.freeze([0x4d, 0x45, 0x4e, 0x43]);
+export const MAGIC = Object.freeze([0x54, 0x52, 0x48, 0x53]);
 export const VERSION = 0x01;
 export const FLAG_COMPRESSED = 0x01;
 export const RESERVED_FLAGS = 0xfe;
@@ -13,15 +13,12 @@ export const AAD_SIZE = 15;
 export const IV_SIZE = 12;
 export const HEADER_SIZE = 27;
 export const TAG_SIZE = 16;
-export const EXTENSION = ".msgenc";
+export const EXTENSION = ".treehash";
 export const EARLIEST_VALID_CREATED_AT = Date.UTC(2024, 0, 1);
 export const FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
 
 export function isCreatedAtSuspicious(createdAt) {
-  return (
-    createdAt < EARLIEST_VALID_CREATED_AT ||
-    createdAt > Date.now() + FUTURE_TOLERANCE_MS
-  );
+  return createdAt < EARLIEST_VALID_CREATED_AT || createdAt > Date.now() + FUTURE_TOLERANCE_MS;
 }
 
 export function buildAad({ senderId, createdAt, compressed }) {
