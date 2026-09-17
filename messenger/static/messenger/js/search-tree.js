@@ -1,5 +1,3 @@
-import { CODEBOOK } from "./huffman-codebook.js";
-
 export class SearchTreeError extends Error {
   constructor(message) {
     super(message);
@@ -14,50 +12,72 @@ const LABELS = Object.freeze({
   "\t": "⇥",
 });
 
-const encoder = new TextEncoder();
+export function countCharacters(text) {
+  if (typeof text !== "string") {
+    throw new SearchTreeError("A árvore só organiza texto.");
+  }
 
-function codeOf(byte) {
-  return CODEBOOK.codes[byte].toString(2).padStart(CODEBOOK.lengths[byte], "0");
+  const counts = new Map();
+  for (const char of text) {
+    counts.set(char, (counts.get(char) ?? 0) + 1);
+  }
+  return counts;
 }
 
-function createNode(char) {
-  const bytes = [...encoder.encode(char)];
-  const codes = bytes.map(codeOf);
+export function entryFor(char, count, order = 0) {
+  if (typeof char !== "string" || [...char].length !== 1) {
+    throw new SearchTreeError("Cada nó guarda um caractere.");
+  }
+  if (!Number.isInteger(count) || count < 1) {
+    throw new SearchTreeError("A contagem precisa ser um inteiro positivo.");
+  }
 
+  const code = char.codePointAt(0);
   return {
     char,
     label: LABELS[char] ?? char,
-    codePoint: char.codePointAt(0),
-    bytes,
-    codes,
-    bits: codes.reduce((total, code) => total + code.length, 0),
-    count: 1,
+    code,
+    count,
+    order,
+    value: code * count,
     left: null,
     right: null,
   };
 }
 
-export function insert(root, char) {
-  if (typeof char !== "string" || [...char].length !== 1) {
-    throw new SearchTreeError("A árvore recebe um caractere por vez.");
+export function entriesFor(text) {
+  const entries = [];
+  for (const [char, count] of countCharacters(text)) {
+    entries.push(entryFor(char, count, entries.length));
   }
+  return entries;
+}
 
+function compare(value, code, node) {
+  if (value !== node.value) {
+    return value < node.value ? -1 : 1;
+  }
+  if (code === null || code === node.code) {
+    return 0;
+  }
+  return code < node.code ? -1 : 1;
+}
+
+export function insert(root, entry) {
   if (root === null) {
-    return createNode(char);
+    return entry;
   }
 
-  const codePoint = char.codePointAt(0);
   let current = root;
-
   for (;;) {
-    if (codePoint === current.codePoint) {
-      current.count += 1;
-      return root;
+    const direction = compare(entry.value, entry.code, current);
+    if (direction === 0) {
+      throw new SearchTreeError(`O valor ${entry.value} já está na árvore.`);
     }
 
-    const side = codePoint < current.codePoint ? "left" : "right";
+    const side = direction < 0 ? "left" : "right";
     if (current[side] === null) {
-      current[side] = createNode(char);
+      current[side] = entry;
       return root;
     }
     current = current[side];
@@ -65,39 +85,35 @@ export function insert(root, char) {
 }
 
 export function buildCharacterTree(text) {
-  if (typeof text !== "string") {
-    throw new SearchTreeError("A árvore só organiza texto.");
-  }
-
   let root = null;
-  for (const char of text) {
-    root = insert(root, char);
+  for (const entry of entriesFor(text)) {
+    root = insert(root, entry);
   }
   return root;
 }
 
-export function searchPath(root, char) {
-  if (typeof char !== "string" || [...char].length !== 1) {
-    throw new SearchTreeError("A busca recebe um caractere por vez.");
+export function searchPath(root, value, code = null) {
+  if (!Number.isInteger(value)) {
+    throw new SearchTreeError("A busca recebe um valor inteiro.");
   }
 
-  const codePoint = char.codePointAt(0);
   const path = [];
   let current = root;
 
   while (current !== null) {
     path.push(current);
-    if (codePoint === current.codePoint) {
+    const direction = compare(value, code, current);
+    if (direction === 0) {
       return { found: true, path };
     }
-    current = codePoint < current.codePoint ? current.left : current.right;
+    current = direction < 0 ? current.left : current.right;
   }
 
   return { found: false, path };
 }
 
-export function search(root, char) {
-  const { found, path } = searchPath(root, char);
+export function search(root, value, code = null) {
+  const { found, path } = searchPath(root, value, code);
   return found ? path[path.length - 1] : null;
 }
 
@@ -119,8 +135,29 @@ export function inOrder(root) {
   return nodes;
 }
 
-export function totalBits(root) {
-  return inOrder(root).reduce((total, node) => total + node.bits * node.count, 0);
+export function height(root) {
+  let deepest = 0;
+  const stack = root === null ? [] : [{ node: root, depth: 1 }];
+
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop();
+    deepest = Math.max(deepest, depth);
+    for (const child of [node.left, node.right]) {
+      if (child !== null) {
+        stack.push({ node: child, depth: depth + 1 });
+      }
+    }
+  }
+
+  return deepest;
+}
+
+export function sharedValues(root) {
+  const byValue = new Map();
+  for (const node of inOrder(root)) {
+    byValue.set(node.value, [...(byValue.get(node.value) ?? []), node]);
+  }
+  return [...byValue.values()].filter((nodes) => nodes.length > 1);
 }
 
 export function layout(root) {
@@ -146,9 +183,10 @@ export function layout(root) {
   const nodes = items.map(({ node, column, depth: nodeDepth }) => ({
     char: node.char,
     label: node.label,
+    code: node.code,
     count: node.count,
-    codes: node.codes,
-    bits: node.bits,
+    value: node.value,
+    order: node.order,
     column,
     depth: nodeDepth,
     left: node.left === null ? null : positions.get(node.left),
