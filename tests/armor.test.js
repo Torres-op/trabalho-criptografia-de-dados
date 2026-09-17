@@ -89,4 +89,9 @@ describe("rejeição de entrada inválida", () => {
   ])("rejeita toArmor com %s", (_rotulo, valor) => {
     expect(() => toArmor(valor)).toThrow(ArmorError);
   });
+
+  it("rejeita Uint8Array vazio, mantendo o mesmo contrato de fromArmor", () => {
+    expect(() => toArmor(new Uint8Array(0))).toThrow(ArmorError);
+    expect(() => toArmor(new Uint8Array(0))).toThrow(/vazio/);
+  });
 });
