@@ -83,5 +83,6 @@ export async function readMessage(file, aesKey = null) {
     senderId: header.senderId,
     compressed: header.compressed,
     fileBytes: file.length,
+    suspiciousCreatedAt: header.suspiciousCreatedAt,
   };
 }
