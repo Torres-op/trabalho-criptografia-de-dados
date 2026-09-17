@@ -686,17 +686,26 @@ if (navigator.storage?.persist) {
 
 ---
 
-## Épico 5 — Formato de Arquivo `.treehash`
+## Épico 5 — Formato de Arquivo `.treehash` ✅
 
 > Especificação completa em **D5**. Este épico implementa e documenta.
 
-### 5.1 Implementar `pack()` e `unpack()` (`format.js`)
+> ✅ **Entregue no `feature/epico-5` e integrado aqui.** 5.1, 5.3 e 5.4 já existiam desde os Épicos 0 e 3; o épico acrescentou o aviso de `created_at` suspeito (5.2), o `armor.js` (5.5) e o [`formato.md`](formato.md) (5.6).
+>
+> Corrigido na integração:
+> - Marcadores do bloco armored, extensão e magic passaram a seguir o nome Treehash (Revisão 6).
+> - O `formato.md` chegou **sem nenhum bloco de código**: faltavam o dump em hex, o bloco armored, o pseudocódigo da derivação (D4) e a conta do tamanho mínimo, todos anunciados no texto. Reescritos, com o exemplo regerado por execução real do pipeline.
+> - Os testes de `created_at` suspeito vieram escritos contra a API anterior à sessão do 4.4 e foram reescritos.
+>
+> O `armor.js` está pronto e testado (**16 testes**), mas nenhuma tela o usa ainda: quem liga é o 8.2 (copiar como texto) e o 9.1 (colar no tradutor).
+
+### 5.1 Implementar `pack()` e `unpack()` (`format.js`) ✅
 - `pack({ senderId, createdAt, compressed, iv, ciphertext })` → `Uint8Array` com o layout de D5.
 - `unpack(bytes)` → todos os campos **mais o `aad`** (os primeiros 15 bytes), necessário para a decifragem.
 - Usar `DataView` para os campos multibyte (`created_at` em big-endian).
 - **Critério de aceite**: `unpack(empacotar(x))` devolve `x` campo a campo; o `aad` retornado é exatamente `bytes.slice(0, 15)`.
 
-### 5.2 Validação estrita na leitura
+### 5.2 Validação estrita na leitura ✅
 Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 - Arquivo menor que 28 bytes (cabeçalho + pelo menos a tag).
 - `magic` diferente de `"TRHS"` → "este arquivo não é uma mensagem do app".
@@ -706,24 +715,24 @@ Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 - `created_at` absurdo (antes de 2024 ou mais de 24h no futuro) → aviso, não bloqueio.
 - **Critério de aceite**: cada caso produz uma mensagem específica; nenhum arquivo malformado chega a `crypto.subtle.decrypt`.
 
-### 5.3 Exportação: download do arquivo
+### 5.3 Exportação: download do arquivo ✅
 - `Blob` a partir do `Uint8Array` com tipo `application/octet-stream`, `URL.createObjectURL`, link com `download`.
 - Nome sugerido: `msg-<AAAAMMDD-HHmmss>.treehash`.
 - Liberar a URL com `URL.revokeObjectURL` após o clique.
 - **Critério de aceite**: o arquivo baixado, reimportado no próprio app, decifra corretamente.
 
-### 5.4 Importação: leitura do arquivo
+### 5.4 Importação: leitura do arquivo ✅
 - `input type="file"` **e** drag-and-drop, ambos levando ao mesmo handler.
 - Ler com `file.arrayBuffer()`.
 - **Critério de aceite**: as duas formas de entrada produzem o mesmo resultado.
 
-### 5.5 Formato armored (`armor.js`)
+### 5.5 Formato armored (`armor.js`) ✅
 > Ver **D6**.
 - `toArmor(bytes)` → string com cabeçalho, base64 em linhas de 64 caracteres, e rodapé.
 - `fromArmor(text)` → `Uint8Array`. Deve ser tolerante: ignorar espaços em branco, quebras de linha extras e texto antes/depois dos marcadores (o WhatsApp costuma adicionar contexto ao redor do que foi colado).
 - **Critério de aceite**: `fromArmor(paraArmor(b))` devolve `b`; texto colado com lixo em volta ainda funciona; texto sem os marcadores é rejeitado com mensagem clara.
 
-### 5.6 Documentar em `FORMATO.md`
+### 5.6 Documentar em `formato.md` ✅
 - Tabela de campos, exemplo de arquivo real em hex, exemplo de bloco armored, e o algoritmo de derivação de chave (D4).
 - **Critério de aceite**: documento suficiente para reimplementar o parser do zero em outra linguagem.
 
@@ -758,11 +767,18 @@ Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 >
 > **11 testes** em `test_messages_api.py` e **11** em `test_message_format.py`.
 
-### 6.3 Endpoint: listar histórico
-- `GET /api/messages/?page=N` — mensagens onde o usuário logado é remetente **ou** destinatário, mais recentes primeiro.
-- Retornar apenas metadados (`id`, `sender`, `recipient`, `created_at`, `received_at`, `size`), **não** o blob.
+### 6.3 Endpoint: listar histórico ✅
+
+> ✅ **Veio do `anderson-branch` e foi corrigido na integração:**
+> - **Filtro por dono.** "Remetente **ou** destinatário" parece certo, mas com 2 participantes as duas cópias da mesma mensagem — a "enviada" de quem escreveu e a "recebida" de quem importou (9.4) — têm exatamente o mesmo par de usuários. Cada um via a própria cópia **e** a do outro, ou seja, a mensagem repetida na tela. O filtro passou a ser por dono, em `Message.objects.owned_by()`, cruzando `direction` com `sender`/`recipient`.
+> - **Endpoint movido para `api.py`** e protegido pelo `participant_api` do 4.3. A versão entregue vivia em `views.py` e só checava autenticação, então um superusuário conseguia listar o histórico.
+> - **Payload em camelCase**, igual ao resto da API, e com o `direction` — a tela do 10.1 precisa dele para separar enviadas de recebidas.
+> - **8 testes** em `test_messages_api.py`.
+
+- `GET /api/messages/?page=N` — a cópia do usuário logado, mais recentes primeiro.
+- Retornar apenas metadados (`id`, `sender`, `recipient`, `direction`, `createdAt`, `receivedAt`, `size`), **não** o blob.
 - Usar `Paginator` do Django.
-- **Critério de aceite**: usuário só vê mensagens em que participa; a resposta não contém nenhum byte de ciphertext.
+- **Critério de aceite**: cada usuário vê só a própria cópia; a resposta não contém nenhum byte de ciphertext.
 
 ### 6.4 Endpoint: buscar blob específico
 - `GET /api/messages/<id>/blob/` — retorna o blob em base64 para re-decifrar no navegador.
@@ -1138,8 +1154,8 @@ Limpar o IndexedDB e validar cada camada de **D11** isoladamente:
 - Diagrama do pipeline completo (envio e recebimento).
 - **Critério de aceite**: alguém de fora roda o app do zero seguindo só o README.
 
-### 15.2 `FORMATO.md`
-- Ver 5.6.
+### 15.2 `formato.md` ✅
+- Ver 5.6 — entregue em [`formato.md`](formato.md).
 
 ### 15.3 `SEGURANCA.md` — modelo de ameaça
 - O que o sistema protege: leitura por terceiros no canal (WhatsApp, e-mail, pen-drive perdido); adulteração da mensagem; leitura por quem tiver acesso ao banco do servidor.
@@ -1230,6 +1246,15 @@ docker compose --profile tunnel up tunnel
 ---
 
 ## Changelog
+
+### Revisão 7 — Épico 5 integrado e listagem do histórico corrigida
+
+| Mudança | Motivo |
+|---|---|
+| **Épico 5 mesclado do `dev`** | Trazia `armor.js`, o aviso de `created_at` suspeito e o `formato.md`, escritos antes da Revisão 6 e do 4.4 |
+| **`formato.md` reconstruído** | O arquivo chegou sem nenhum bloco de código; o dump em hex, o bloco armored e o pseudocódigo do D4 eram prometidos no texto e não existiam. O exemplo foi regerado por execução real |
+| **6.3 em `api.py`, filtrado por dono** | Em `views.py` faltava a checagem de participante, e o filtro "remetente ou destinatário" mostrava a cópia do outro usuário junto da própria |
+| **Migrations 0001/0002 preservadas** | O `anderson-branch` apagou o cabeçalho gerado pelo Django e a quebra de linha final; migration publicada não se reescreve |
 
 ### Revisão 6 — nome do app
 

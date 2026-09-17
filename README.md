@@ -14,6 +14,8 @@ Aplicativo de mensagens criptografadas entre **dois usuários fixos**. A mensage
 | 2 — autenticação e os 2 usuários fixos | ✅ |
 | 3 — compressão com Huffman | ✅ |
 | 4 — chaves ECDH, HKDF e AES-GCM | ✅ |
+| 5 — formato do arquivo e bloco armored | ✅ |
+| 6 — API de histórico | parcial: falta 6.4, 6.5 e 6.8 |
 | 7 — fluxo de envio | ✅ |
 
 A compressão e a cifragem são **reais**. O fluxo completo funciona: cada usuário gera o próprio par de chaves no primeiro acesso, o servidor distribui as chaves públicas, e o arquivo gerado por um só abre no navegador do outro.
@@ -90,6 +92,7 @@ messenger/                 app principal
     keys.js                ciclo de vida das chaves
     keystore.js            IndexedDB, separado por usuário
     format.js              formato binário .treehash
+    armor.js               bloco de texto colável para WhatsApp e e-mail
     api.js                 chamadas ao servidor
     app.js                 pipeline e sessão
     environment.js         guarda de contexto seguro
@@ -104,6 +107,7 @@ docs/                      backlog, infraestrutura e convenções
 | Documento | Conteúdo |
 |---|---|
 | [`docs/backlog-detalhado.md`](docs/backlog-detalhado.md) | O plano completo: 18 épicos e as decisões travadas **D1**–**D13** |
+| [`docs/formato.md`](docs/formato.md) | O formato `.treehash` byte a byte, com exemplo real e checklist para reimplementar |
 | [`docs/infraestrutura.md`](docs/infraestrutura.md) | Ambiente Docker, comandos, variáveis, troubleshooting |
 | [`docs/convencoes.md`](docs/convencoes.md) | Convenções de código |
 
