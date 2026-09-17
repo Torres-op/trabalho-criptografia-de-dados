@@ -6,6 +6,8 @@ import {
   requireSecureContext,
 } from "./environment.js";
 import { HEADER_SIZE, TAG_SIZE } from "./format.js";
+import { buildCharacterTree, inOrder, layout, totalBits } from "./search-tree.js";
+import { renderCodeTable, renderTree } from "./tree-view.js";
 import * as ui from "./ui.js";
 
 const ENVELOPE_SIZE = HEADER_SIZE + TAG_SIZE;
@@ -23,6 +25,10 @@ const counter = document.querySelector("#counter");
 const status = document.querySelector("#status");
 const statsPanel = document.querySelector("#stats");
 const note = document.querySelector("#stats-note");
+const treePanel = document.querySelector("#tree-panel");
+const treeNote = document.querySelector("#tree-note");
+const treeView = document.querySelector("#tree");
+const treeCodes = document.querySelector("#tree-codes");
 const notices = document.querySelector("#notices");
 
 let last = null;
@@ -78,6 +84,7 @@ async function generate() {
   ui.clearStatus(status);
   statsPanel.hidden = true;
   note.hidden = true;
+  treePanel.hidden = true;
   button.disabled = true;
   button.textContent = "Gerando...";
 
@@ -91,6 +98,7 @@ async function generate() {
 
   ui.downloadFile(last.file, last.name);
   renderStats(last.stats);
+  renderTreePanel(textArea.value, last.stats);
 
   const size = ui.formatBytes(last.file.length);
   try {
@@ -161,6 +169,36 @@ function renderStats(stats) {
       "então em textos curtos ele supera o ganho da compressão; por volta de 100 " +
       "caracteres o arquivo já sai menor que o texto original.";
   }
+}
+
+function renderTreePanel(text, stats) {
+  const root = buildCharacterTree(text);
+  if (root === null) {
+    treePanel.hidden = true;
+    return;
+  }
+
+  const nodes = inOrder(root);
+  renderTree(treeView, layout(root));
+  renderCodeTable(treeCodes, nodes);
+
+  const plural = nodes.length === 1 ? "" : "s";
+  treeCodes.querySelector("caption").textContent =
+    `Percurso em ordem — ${nodes.length} caractere${plural} distinto${plural}, ` +
+    `${totalBits(root).toLocaleString("pt-BR")} bits no total`;
+
+  treeNote.textContent =
+    "Cada caractere distinto entrou numa árvore binária de busca na ordem em que apareceu na " +
+    "mensagem, e o percurso em ordem devolve o alfabeto ordenado. Os códigos vêm da árvore de " +
+    "Huffman, que é fixa e igual para os dois usuários: a sua mensagem decide apenas quais " +
+    "caminhos são percorridos. Caracteres acentuados ocupam mais de um byte em UTF-8 e recebem " +
+    "um código por byte." +
+    (stats.compressed
+      ? ""
+      : " Esta mensagem saiu sem compressão, porque o Huffman a deixaria maior: os códigos " +
+        "abaixo não foram usados no arquivo.");
+
+  treePanel.hidden = false;
 }
 
 start();

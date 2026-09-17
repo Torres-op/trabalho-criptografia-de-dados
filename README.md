@@ -93,6 +93,8 @@ messenger/                 app principal
     keystore.js            IndexedDB, separado por usuário
     format.js              formato binário .treehash
     armor.js               bloco de texto colável para WhatsApp e e-mail
+    search-tree.js         árvore binária de busca dos caracteres
+    tree-view.js           desenho da árvore no compositor
     api.js                 chamadas ao servidor
     app.js                 pipeline e sessão
     environment.js         guarda de contexto seguro

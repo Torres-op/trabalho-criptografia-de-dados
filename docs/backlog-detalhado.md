@@ -1050,6 +1050,17 @@ Se um usuário perde a chave e nenhum backup funciona, o outro ainda tem a dele 
 - Qualquer sinal negativo leva, com um clique, à ação que o resolve.
 - **Critério de aceite**: o usuário identifica em um olhar se o canal está pronto para uso e se sua chave está protegida contra perda.
 
+### 12.5 Visualização da árvore binária de busca ✅
+
+> Pedido em 17/09/2026: a organização da árvore precisa aparecer para o usuário.
+
+- Módulo `search-tree.js`: inserção, busca (devolvendo o caminho percorrido), percurso em ordem, soma de bits e posicionamento para desenho. A chave é o ponto de código do caractere, e a ordem de inserção é a de primeira aparição no texto — é ela que dá forma à árvore.
+- Painel no compositor, abaixo do painel de compressão (7.5): SVG com caractere, contagem e código em cada nó, mais a tabela do percurso em ordem. Só no compositor; o tradutor fica para depois, se fizer falta.
+- **A árvore de busca não entra no pipeline.** Ela organiza e exibe; o arquivo continua sendo Huffman canônico sobre bytes (D1–D3), byte a byte idêntico ao de antes. O formato travado e os arquivos já gerados seguem válidos.
+- **Ordenar o texto antes de comprimir foi descartado**, e vale registrar o porquê: a ordem dos caracteres *é* a mensagem. Ler a árvore em ordem devolveria "oov" para "ovo", e desfazer isso exigiria guardar a permutação — log₂(n!) bits, cerca de 65 bytes numa frase de 100 caracteres, mais do que a compressão inteira economiza.
+- Os códigos exibidos vêm do códebook fixo. Caractere fora do ASCII ocupa mais de um byte (D1) e aparece com um código por byte.
+- **Critério de aceite**: a árvore muda conforme o texto; o percurso em ordem devolve o alfabeto ordenado; a soma dos bits bate com o arquivo real. ✅ **21 testes** em `tests/search-tree.test.js`, incluindo a conferência contra o encoder.
+
 ---
 
 ## Épico 13 — Segurança e Hardening
@@ -1246,6 +1257,13 @@ docker compose --profile tunnel up tunnel
 ---
 
 ## Changelog
+
+### Revisão 8 — árvore binária de busca na tela
+
+| Mudança | Motivo |
+|---|---|
+| **12.5 — `search-tree.js` e painel no compositor** | A organização da árvore precisa aparecer para o usuário. A BST organiza e mostra; o pipeline segue Huffman canônico sobre bytes, sem alterar um byte do arquivo |
+| **Ordenar o texto antes de comprimir: descartado** | A ordem dos caracteres é a mensagem, e guardar a permutação para desfazer custa mais que a compressão economiza |
 
 ### Revisão 7 — Épico 5 integrado e listagem do histórico corrigida
 
