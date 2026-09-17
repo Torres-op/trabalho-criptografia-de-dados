@@ -65,6 +65,14 @@ No PowerShell, troque `cp` por `Copy-Item .env.example .env`.
 
 O `seed_users` cria os dois participantes definidos em `SEED_USER_A`/`SEED_PASS_A` e `SEED_USER_B`/`SEED_PASS_B`. Rodar de novo não duplica nada e não troca senhas. Um superusuário criado com `createsuperuser` serve para o `/admin/`, mas não participa das conversas.
 
+Para rodar os testes JS falta um passo, uma única vez — o volume `node_modules` nasce vazio:
+
+```bash
+docker compose run --rm js npm ci
+```
+
+O app não depende disso; o Django serve o JavaScript sem build. Só o Vitest precisa das dependências instaladas.
+
 Abra `http://localhost:8000`. Se essa porta já estiver ocupada na sua máquina, ajuste `WEB_PORT` no `.env` — todas as URLs deste documento usam a porta padrão.
 
 > **Nunca acesse pelo IP da rede** (`http://192.168.x.x:8000`). A Web Crypto API não existe fora de um contexto seguro, e o app quebra inteiro. Ver **D10** no backlog e a seção [10](#10-testar-no-celular).
@@ -125,10 +133,11 @@ docker compose up
 Roda o Vitest. Não sobe no `docker compose up`; é executado sob demanda:
 
 ```bash
+docker compose run --rm js npm ci     # uma vez, ou quando o package-lock.json mudar
 docker compose run --rm js npm test
 ```
 
-O volume nomeado `node_modules` é obrigatório: como `/app` é bind mount do host, sem ele o `node_modules` do host (inexistente, ou compilado para outro SO) sobrescreveria o do container.
+O volume nomeado `node_modules` é obrigatório: como `/app` é bind mount do host, sem ele o `node_modules` do host (inexistente, ou compilado para outro SO) sobrescreveria o do container. Em troca, ele nasce vazio — sem o `npm ci`, o primeiro `npm test` falha com `sh: vitest: not found`.
 
 ### `tunnel` — cloudflared (profile `tunnel`)
 
@@ -177,12 +186,13 @@ Um erro comum é montar um volume sobre `site-packages` para "preservar" as depe
 | `docker compose run --rm web python manage.py seed_users` | Cria os 2 usuários fixos (Épico 2.2) |
 | `docker compose run --rm web python manage.py test` | Testes Django |
 | `docker compose run --rm web python manage.py shell` | Shell do Django |
+| `docker compose run --rm js npm ci` | Instala as dependências JS no volume `node_modules` |
 | `docker compose run --rm js npm test` | Testes JS (Vitest) |
 | `docker compose --profile tunnel up tunnel` | Túnel HTTPS |
 
 O padrão é sempre o mesmo: `docker compose run --rm web python manage.py <comando>`. Qualquer comando do `manage.py` funciona nesse formato.
 
-> `docker compose down -v` remove o volume `pgdata`. O banco é apagado. Use quando quiser começar do zero.
+> `docker compose down -v` remove os volumes `pgdata` e `node_modules`: o banco é apagado e as dependências JS precisam ser reinstaladas com `npm ci`. Use quando quiser começar do zero.
 
 ### Atalho opcional
 
@@ -302,6 +312,9 @@ A camada `deps` precisa ser reconstruída: `docker compose build web`.
 
 **`ValueError: Missing staticfiles manifest entry` nos testes Django**
 O runner de testes força `DEBUG=False`, e com isso o `CompressedManifestStaticFilesStorage` passa a exigir o manifesto gerado pelo `collectstatic`, que só existe na imagem de produção. O `core/test_runner.py` troca o storage por um simples durante os testes — por isso o `settings.py` aponta `TEST_RUNNER` para ele. Se o erro aparecer, confira se essa linha continua lá.
+
+**`sh: vitest: not found`**
+O volume `node_modules` está vazio — é assim que ele nasce, e `docker compose down -v` o esvazia de novo. Rode `docker compose run --rm js npm ci`.
 
 **`O sistema precisa de exatamente 2 participantes`**
 Sobraram perfis de seeds antigos — por exemplo `usuario1`/`usuario2`, da primeira versão do comando. Apague-os pelo `/admin/` em **Perfis** e rode `seed_users` de novo.

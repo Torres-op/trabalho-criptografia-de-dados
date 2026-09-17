@@ -49,9 +49,12 @@ Guia completo, comandos do dia a dia e troubleshooting em **[`docs/infraestrutur
 ## Testes
 
 ```bash
+docker compose run --rm js npm ci                      # uma vez: instala o Vitest
 docker compose run --rm js npm test                    # JS (Vitest)
 docker compose run --rm web python manage.py test      # Django
 ```
+
+O `npm ci` só é necessário na primeira vez e quando o `package-lock.json` mudar. O app não depende dele: o Django serve o JavaScript direto, sem build.
 
 ## Testar os 2 usuários numa máquina só
 
