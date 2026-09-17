@@ -13,5 +13,5 @@ urlpatterns = [
     path("logout/", login_required(LogoutView.as_view()), name="logout"),
     path("api/public-key/", api.publish_public_key, name="api-publish-public-key"),
     path("api/public-key/<str:username>/", api.fetch_public_key, name="api-public-key"),
-    path("api/messages/", api.save_message, name="api-messages"),
+    path("api/messages/", views.messages_api, name="api-messages"),
 ]
