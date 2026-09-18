@@ -26,10 +26,7 @@ services:
       - key: DJANGO_DEBUG
         value: "0"
       - key: ALLOWED_HOSTS
-        fromService:
-          type: web
-          name: treehash
-          property: host
+        value: treehash.onrender.com
       - key: WEB_CONCURRENCY
         value: "1"
       - key: WEB_THREADS
