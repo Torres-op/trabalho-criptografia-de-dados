@@ -439,3 +439,24 @@ code {
     text-align: center;
   }
 }
+
+.paste {
+  margin-top: 22px;
+}
+
+.paste textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
+
+.result-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.result-header h2 {
+  font-size: 1.05rem;
+  margin: 28px 0 8px;
+}
