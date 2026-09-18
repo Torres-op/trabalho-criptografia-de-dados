@@ -1317,7 +1317,7 @@ Se um usuário perde a chave e nenhum backup funciona, o outro ainda tem a dele 
 - Deduplicação (6.5).
 - **Critério de aceite**: `python manage.py test` passa 100%.
 
-> ✅ **150 testes**, com `manage.py test` passando por inteiro. Cobrem login e logout, cada endpoint nos quatro estados (sucesso, sem login, sem permissão e entrada malformada), o write-once da chave pública, a deduplicação do 6.5, a migration 0003 com dados reais, a CSP e o limite de login.
+> ✅ **158 testes** hoje, com `manage.py test` passando por inteiro. Cobrem login e logout, cada endpoint nos quatro estados (sucesso, sem login, sem permissão e entrada malformada), o write-once da chave pública, a deduplicação do 6.5, a migration 0003 com dados reais, a CSP e o limite de login.
 
 ### 14.6 Teste end-to-end manual 🟡
 - Roteiro escrito: A gera chave → publica → verifica fingerprint → compõe → baixa → B importa → decifra → confere histórico dos dois lados.
