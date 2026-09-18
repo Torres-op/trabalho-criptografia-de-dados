@@ -10,6 +10,7 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
+from django.views.decorators.debug import sensitive_variables
 from django.views.decorators.http import require_http_methods
 
 from .jwk import InvalidPublicKey, canonical_public_jwk, fingerprint, load_public_jwk
@@ -198,6 +199,7 @@ def list_messages(request):
     )
 
 
+@sensitive_variables("payload", "blob", "digest")
 def save_message(request):
     payload = read_json_object(request)
     if payload is None:
@@ -249,6 +251,7 @@ def save_message(request):
 
 @require_http_methods(["GET"])
 @participant_api
+@sensitive_variables("message")
 def message_blob(request, message_id):
     message = Message.objects.owned_by(request.user).filter(pk=message_id).first()
     if message is None:
@@ -304,6 +307,7 @@ def key_backup(request):
     return latest_key_backup(request)
 
 
+@sensitive_variables("payload", "blob")
 def save_key_backup(request):
     payload = read_json_object(request)
     if payload is None:
@@ -321,6 +325,7 @@ def save_key_backup(request):
     return JsonResponse(backup_payload(backup), status=201)
 
 
+@sensitive_variables("backup")
 def latest_key_backup(request):
     backup = KeyBackup.objects.filter(user=request.user).first()
     if backup is None:

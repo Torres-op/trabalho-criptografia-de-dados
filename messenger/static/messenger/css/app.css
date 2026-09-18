@@ -712,3 +712,8 @@ code {
     word-break: break-word;
   }
 }
+
+.counter--over {
+  font-weight: 600;
+  color: #a03a30;
+}

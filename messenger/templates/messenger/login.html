@@ -6,6 +6,10 @@
 <div class="login-card">
   <h1>Entrar</h1>
 
+  {% if blocked %}
+  <p class="status status--error">{{ blocked }}</p>
+  {% endif %}
+
   {% if form.errors %}
   <p class="status status--error">Usuário ou senha incorretos.</p>
   {% endif %}
