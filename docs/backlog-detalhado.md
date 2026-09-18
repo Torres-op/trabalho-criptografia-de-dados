@@ -693,7 +693,9 @@ if (navigator.storage?.persist) {
 
 `ui.reportEnvironment(target, checks)` recebe as verificações por parâmetro em vez de importá-las, o que a torna testável sem DOM e sem mexer em globais.
 
-> O aviso de armazenamento volátil ainda **não** aponta para a ação de backup, porque o 11.3 não existe. Quando existir, a mensagem ganha o link — anotado como pendência do Épico 11.
+> ✅ **Pendência fechada em 18/09/2026.** O aviso agora só aparece quando o navegador negou o armazenamento **e** não há backup guardado, e aponta a saída: guardar o backup na tela de Identidade. Com backup guardado, ele cala — o risco vira aborrecimento, não perda, e quem continua marcando o ponto é o sinal do 12.4.
+>
+> A decisão ficou em `storageNotices()`, função pura em `environment.js`, com **4 testes**. Vale registrar o que o `persist()` faz de verdade: o Chrome nunca pergunta e concede por heurística de engajamento (site instalado, favoritado, muito uso), então em `localhost` ele costuma negar calado; o Firefox pergunta. Receber `false` não é sintoma de bug no app.
 
 ---
 
