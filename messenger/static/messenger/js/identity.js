@@ -5,6 +5,7 @@ import {
   requestPersistentStorage,
   requireSecureContext,
 } from "./environment.js";
+import { showBadge } from "./badge.js";
 import { fingerprintOf } from "./fingerprint.js";
 import { backupFileName, keyPairFrom, openBackup, packBackup } from "./key-backup.js";
 import { ensureKeyPair, exportPublicKey } from "./keys.js";
@@ -37,6 +38,7 @@ let context = null;
 let remote = null;
 let pair = null;
 let peerText = null;
+let session = { ready: false, peerVerified: false, keyConflict: false };
 let attempts = 0;
 
 function start() {
@@ -81,6 +83,7 @@ async function load() {
   }
 
   ui.showNotices(notices, messages);
+  showBadge(document.querySelector("#badge"), { context, session, remote });
 }
 
 async function publishMine(messages) {
@@ -88,6 +91,7 @@ async function publishMine(messages) {
     await remote.publishPublicKey(await exportPublicKey(pair.publicKey));
   } catch (error) {
     if (error.code === "key_conflict") {
+      session.keyConflict = true;
       messages.push(
         "A chave deste navegador não é a que está registrada no servidor. Restaure o seu " +
           "backup abaixo para voltar a ler o histórico."
@@ -111,6 +115,7 @@ async function showPeer(messages) {
     return;
   }
 
+  session.ready = true;
   peerText = await fingerprintOf(published.jwk);
   peerFingerprint.textContent = peerText;
   showVerified(published.fingerprintVerified === true);
@@ -124,6 +129,7 @@ async function showPeer(messages) {
 }
 
 function showVerified(verified) {
+  session.peerVerified = verified;
   verifiedState.textContent = verified
     ? `Você já confirmou que este é o código de ${context.peerUsername}.`
     : "Ainda não confirmado. Compare os dois códigos com a outra pessoa antes de marcar.";
@@ -138,6 +144,7 @@ async function verifyPeer() {
   try {
     const answer = await remote.verifyFingerprint(peerText);
     showVerified(answer.fingerprintVerified === true);
+    showBadge(document.querySelector("#badge"), { context, session, remote });
     ui.showStatus(status, "success", "Identidade confirmada", "");
   } catch (error) {
     showVerified(false);
@@ -180,6 +187,7 @@ async function createBackup() {
     return;
   }
 
+  ui.showLoading(status, "Cifrando a chave...", "A senha passa por 600 mil rodadas de PBKDF2.");
   createButton.disabled = true;
   createButton.textContent = "Cifrando a chave...";
 
@@ -216,7 +224,7 @@ async function fileBytes() {
 }
 
 async function restore(source, field) {
-  ui.clearStatus(status);
+  ui.showLoading(status, "Abrindo o backup...", "A senha passa por 600 mil rodadas de PBKDF2.");
 
   if (attempts >= MAX_ATTEMPTS) {
     return;

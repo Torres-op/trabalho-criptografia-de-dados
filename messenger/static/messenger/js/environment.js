@@ -35,3 +35,14 @@ export async function requestPersistentStorage() {
     return false;
   }
 }
+
+export async function hasPersistentStorage() {
+  if (!globalThis.navigator?.storage?.persisted) {
+    return false;
+  }
+  try {
+    return await navigator.storage.persisted();
+  } catch {
+    return false;
+  }
+}

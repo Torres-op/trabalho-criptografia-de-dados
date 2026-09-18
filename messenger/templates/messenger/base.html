@@ -20,6 +20,7 @@
       <a href="{% url 'messenger:identity' %}"
          class="{% if request.resolver_match.url_name == 'identity' %}active{% endif %}">Identidade</a>
     </nav>
+    <a id="badge" class="badge-status" href="{% url 'messenger:identity' %}" hidden></a>
     <div class="account">
       <span class="account__name">{{ user.get_username }}</span>
       <form method="post" action="{% url 'messenger:logout' %}" class="logout-form">

@@ -65,6 +65,18 @@ export function showStatus(target, kind, title, detail = "") {
   }
 }
 
+export function showLoading(target, title, detail = "") {
+  showStatus(target, "loading", title, detail);
+}
+
+export function showEmpty(target, message) {
+  const list = target.tagName === "UL" || target.tagName === "OL";
+  const item = document.createElement(list ? "li" : "p");
+  item.className = "empty";
+  item.textContent = message;
+  target.replaceChildren(item);
+}
+
 export function clearStatus(target) {
   target.hidden = true;
   target.innerHTML = "";

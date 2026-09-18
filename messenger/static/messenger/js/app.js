@@ -31,7 +31,7 @@ export async function openSession(context, remote) {
     await remote.publishPublicKey(await exportPublicKey(pair.publicKey));
   } catch (error) {
     if (error.code === "key_conflict") {
-      return { ...pendingSession, reason: error.message };
+      return { ...pendingSession, reason: error.message, keyConflict: true };
     }
     notices.push(`Não foi possível confirmar sua chave pública com o servidor: ${error.message}`);
   }

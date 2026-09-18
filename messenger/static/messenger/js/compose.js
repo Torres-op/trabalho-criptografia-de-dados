@@ -24,6 +24,7 @@ import {
   shareFile,
 } from "./share.js";
 import { createTreeView, renderValueTable } from "./tree-view.js";
+import { showBadge } from "./badge.js";
 import * as ui from "./ui.js";
 
 const STAGE_TITLES = Object.freeze({
@@ -57,6 +58,7 @@ const replayButton = document.querySelector("#tree-replay");
 const fitButton = document.querySelector("#tree-fit");
 
 let last = null;
+let context = null;
 let session = null;
 let remote = null;
 let view = null;
@@ -91,7 +93,7 @@ async function openKeys() {
   });
 
   try {
-    const context = readSessionData();
+    context = readSessionData();
     remote = createRemote(context);
     session = await openSession(context, remote);
     messages.push(...session.notices);
@@ -108,6 +110,7 @@ async function openKeys() {
   }
 
   ui.showNotices(notices, messages);
+  showBadge(document.querySelector("#badge"), { context, session, remote });
   updateCounter();
 }
 
@@ -122,6 +125,7 @@ async function generate() {
   stopBuild();
   shareSection.hidden = true;
   treePanel.hidden = true;
+  ui.showLoading(status, "Gerando a mensagem...", "Comprimindo e cifrando no seu navegador.");
   button.disabled = true;
   button.textContent = "Gerando...";
 

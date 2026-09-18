@@ -6,6 +6,7 @@ import {
   requireSecureContext,
 } from "./environment.js";
 import { fileName } from "./format.js";
+import { showBadge } from "./badge.js";
 import * as ui from "./ui.js";
 
 const DIRECTION_LABELS = Object.freeze({ sent: "Enviada", received: "Recebida" });
@@ -26,6 +27,7 @@ const previousButton = document.querySelector("#previous");
 const nextButton = document.querySelector("#next");
 const notices = document.querySelector("#notices");
 
+let context = null;
 let session = null;
 let remote = null;
 let page = 1;
@@ -54,7 +56,7 @@ async function openKeys() {
   });
 
   try {
-    const context = readSessionData();
+    context = readSessionData();
     remote = createRemote(context);
     session = await openSession(context, remote);
     messages.push(...session.notices);
@@ -66,6 +68,7 @@ async function openKeys() {
   }
 
   ui.showNotices(notices, messages);
+  showBadge(document.querySelector("#badge"), { context, session, remote });
   load(1);
 }
 
@@ -78,9 +81,11 @@ async function load(target) {
     return;
   }
 
-  ui.clearStatus(status);
+  ui.showLoading(status, "Carregando o histórico...");
   try {
-    render(await remote.listMessages({ ...filters(), page: target }));
+    const answer = await remote.listMessages({ ...filters(), page: target });
+    ui.clearStatus(status);
+    render(answer);
   } catch (error) {
     list.replaceChildren();
     pager.hidden = true;
@@ -93,10 +98,7 @@ function render(answer) {
   list.replaceChildren();
 
   if (answer.count === 0) {
-    const empty = document.createElement("li");
-    empty.className = "message message--empty";
-    empty.textContent = "Nenhuma mensagem com esses filtros.";
-    list.append(empty);
+    ui.showEmpty(list, "Nenhuma mensagem com esses filtros.");
     pager.hidden = true;
     return;
   }

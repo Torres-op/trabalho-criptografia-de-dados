@@ -7,6 +7,7 @@ import {
   requireSecureContext,
 } from "./environment.js";
 import { copyText } from "./share.js";
+import { showBadge } from "./badge.js";
 import * as ui from "./ui.js";
 
 const STAGE_TITLES = Object.freeze({
@@ -30,6 +31,7 @@ const meta = document.querySelector("#meta");
 const copyButton = document.querySelector("#copy-text");
 const notices = document.querySelector("#notices");
 
+let context = null;
 let session = null;
 let remote = null;
 
@@ -89,7 +91,7 @@ async function openKeys() {
   });
 
   try {
-    const context = readSessionData();
+    context = readSessionData();
     remote = createRemote(context);
     session = await openSession(context, remote);
     messages.push(...session.notices);
@@ -101,6 +103,7 @@ async function openKeys() {
   }
 
   ui.showNotices(notices, messages);
+  showBadge(document.querySelector("#badge"), { context, session, remote });
 }
 
 function authorLabel(senderId) {
@@ -139,7 +142,7 @@ function readPasted() {
 }
 
 async function process(bytes, label) {
-  ui.clearStatus(status);
+  ui.showLoading(status, "Lendo a mensagem...", label);
   result.hidden = true;
 
   let message;
