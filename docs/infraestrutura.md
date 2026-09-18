@@ -56,10 +56,22 @@ git clone <url-do-repo>
 cd projeto_criptografia
 cp .env.example .env
 docker compose build
+docker compose run --rm web python manage.py migrate
+docker compose run --rm web python manage.py seed_users
 docker compose up
 ```
 
 No PowerShell, troque `cp` por `Copy-Item .env.example .env`.
+
+O `seed_users` cria os dois participantes definidos em `SEED_USER_A`/`SEED_PASS_A` e `SEED_USER_B`/`SEED_PASS_B`. Rodar de novo não duplica nada e não troca senhas. Um superusuário criado com `createsuperuser` serve para o `/admin/`, mas não participa das conversas.
+
+Para rodar os testes JS falta um passo, uma única vez — o volume `node_modules` nasce vazio:
+
+```bash
+docker compose run --rm js npm ci
+```
+
+O app não depende disso; o Django serve o JavaScript sem build. Só o Vitest precisa das dependências instaladas.
 
 Abra `http://localhost:8000`. Se essa porta já estiver ocupada na sua máquina, ajuste `WEB_PORT` no `.env` — todas as URLs deste documento usam a porta padrão.
 
@@ -79,6 +91,8 @@ Isso faz os arquivos que o container cria (migrations, `startapp`) pertencerem a
 ---
 
 ## 4. Bootstrap do Épico 0
+
+> **Registro histórico.** Estes passos criaram a estrutura do projeto no Épico 0. Num clone novo **não rode** — `core/` e `messenger/` já existem; siga a seção 3.
 
 Na primeira vez, o projeto Django ainda não existe — não há `manage.py`, então o serviço `web` não sobe. Crie a estrutura pelo container:
 
@@ -119,10 +133,11 @@ docker compose up
 Roda o Vitest. Não sobe no `docker compose up`; é executado sob demanda:
 
 ```bash
+docker compose run --rm js npm ci     # uma vez, ou quando o package-lock.json mudar
 docker compose run --rm js npm test
 ```
 
-O volume nomeado `node_modules` é obrigatório: como `/app` é bind mount do host, sem ele o `node_modules` do host (inexistente, ou compilado para outro SO) sobrescreveria o do container.
+O volume nomeado `node_modules` é obrigatório: como `/app` é bind mount do host, sem ele o `node_modules` do host (inexistente, ou compilado para outro SO) sobrescreveria o do container. Em troca, ele nasce vazio — sem o `npm ci`, o primeiro `npm test` falha com `sh: vitest: not found`.
 
 ### `tunnel` — cloudflared (profile `tunnel`)
 
@@ -164,19 +179,20 @@ Um erro comum é montar um volume sobre `site-packages` para "preservar" as depe
 | `docker compose down -v` | Derruba **e apaga o banco** |
 | `docker compose logs -f web` | Acompanha os logs |
 | `docker compose exec web bash` | Shell dentro do container |
-| `docker compose exec db psql -U msgenc -d msgenc` | Console do Postgres |
+| `docker compose exec db psql -U treehash -d treehash` | Console do Postgres |
 | `docker compose run --rm web python manage.py migrate` | Aplica migrations |
 | `docker compose run --rm web python manage.py makemigrations` | Gera migrations |
 | `docker compose run --rm web python manage.py createsuperuser` | Cria admin |
 | `docker compose run --rm web python manage.py seed_users` | Cria os 2 usuários fixos (Épico 2.2) |
 | `docker compose run --rm web python manage.py test` | Testes Django |
 | `docker compose run --rm web python manage.py shell` | Shell do Django |
+| `docker compose run --rm js npm ci` | Instala as dependências JS no volume `node_modules` |
 | `docker compose run --rm js npm test` | Testes JS (Vitest) |
 | `docker compose --profile tunnel up tunnel` | Túnel HTTPS |
 
 O padrão é sempre o mesmo: `docker compose run --rm web python manage.py <comando>`. Qualquer comando do `manage.py` funciona nesse formato.
 
-> `docker compose down -v` remove o volume `pgdata`. O banco é apagado. Use quando quiser começar do zero.
+> `docker compose down -v` remove os volumes `pgdata` e `node_modules`: o banco é apagado e as dependências JS precisam ser reinstaladas com `npm ci`. Use quando quiser começar do zero.
 
 ### Atalho opcional
 
@@ -226,6 +242,8 @@ Não é preciso segunda máquina, segundo navegador nem deploy. Use duas origens
 |---|---|
 | **A** | `http://localhost:8000` |
 | **B** | `http://127.0.0.1:8000` |
+
+Use sempre a **mesma origem para o mesmo usuário**. Cada origem tem o próprio IndexedDB: entrar como A pela origem do B gera um par de chaves novo, e o servidor recusa com 409 porque A já registrou outra chave (write-once, item 4.3).
 
 As duas chegam ao mesmo container, mas o navegador as trata como **origens distintas**:
 
@@ -291,3 +309,31 @@ Outro processo ocupa a porta — frequentemente um container de outro projeto (`
 
 **Mudei o `requirements.txt` e a dependência não aparece**
 A camada `deps` precisa ser reconstruída: `docker compose build web`.
+
+**`ValueError: Missing staticfiles manifest entry` nos testes Django**
+O runner de testes força `DEBUG=False`, e com isso o `CompressedManifestStaticFilesStorage` passa a exigir o manifesto gerado pelo `collectstatic`, que só existe na imagem de produção. O `core/test_runner.py` troca o storage por um simples durante os testes — por isso o `settings.py` aponta `TEST_RUNNER` para ele. Se o erro aparecer, confira se essa linha continua lá.
+
+**`sh: vitest: not found`**
+O volume `node_modules` está vazio — é assim que ele nasce, e `docker compose down -v` o esvazia de novo. Rode `docker compose run --rm js npm ci`.
+
+**`O sistema precisa de exatamente 2 participantes`**
+Sobraram perfis de seeds antigos — por exemplo `usuario1`/`usuario2`, da primeira versão do comando. Apague-os pelo `/admin/` em **Perfis** e rode `seed_users` de novo.
+
+**`Já existe outra chave pública registrada para você no servidor`**
+Os dados do navegador foram apagados, ou você entrou por outro navegador ou por outra origem (`localhost` × `127.0.0.1`), e ele gerou um par novo. Com o write-once, o servidor recusa. Em desenvolvimento, vá em `/admin/` → **Perfis** → ação *Apagar a chave pública*; o próximo acesso registra de novo.
+
+**Atualizei para o nome Treehash**
+Antes da Revisão 6 do backlog, o app se chamava `msgenc`. Para quem já tinha o projeto rodando:
+
+- **O app acusa 409.** O banco do IndexedDB mudou de nome: o navegador não encontra a chave antiga e gera outra. Apague a chave no `/admin/` (item acima).
+- **As mensagens de teste antigas não abrem.** O magic e o `info` do HKDF mudaram. É esperado.
+- **Postgres.** O seu `.env` continua com `msgenc`, e o volume foi criado com esses nomes — isso segue funcionando. Não troque só o `.env`: o Postgres responde `password authentication failed for user "treehash"`. Para alinhar com o `.env.example`, renomeie dentro do próprio Postgres:
+
+```bash
+docker compose stop web
+docker compose exec db psql -U msgenc -d postgres -c "ALTER DATABASE msgenc RENAME TO treehash;" -c "CREATE ROLE rename_helper SUPERUSER LOGIN;"
+docker compose exec db psql -U rename_helper -d postgres -c "ALTER ROLE msgenc RENAME TO treehash;" -c "ALTER ROLE treehash PASSWORD 'treehash';"
+docker compose exec db psql -U treehash -d postgres -c "DROP ROLE rename_helper;"
+```
+
+Depois copie as linhas `POSTGRES_*` e `DATABASE_URL` do `.env.example` para o `.env` e rode `docker compose up -d`.
