@@ -791,14 +791,27 @@ Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 - Usar `Paginator` do Django.
 - **Critério de aceite**: cada usuário vê só a própria cópia; a resposta não contém nenhum byte de ciphertext.
 
-### 6.4 Endpoint: buscar blob específico
+### 6.4 Endpoint: buscar blob específico ✅
 - `GET /api/messages/<id>/blob/` — retorna o blob em base64 para re-decifrar no navegador.
 - **Critério de aceite**: retorna `403` se o usuário logado não for remetente nem destinatário.
 
-### 6.5 Endpoint: deduplicação
+> ✅ **Feito junto com o Épico 10, que depende dele.**
+> - `GET /api/messages/<id>/blob/` devolve o blob em base64 **mais os metadados** da mensagem, para a tela poder nomear o arquivo no download sem uma segunda chamada.
+> - **Quem não é dono recebe 404, não 403.** Este item foi escrito antes do conceito de dono (6.3): com 2 participantes, quem não participa já é barrado com 403 pelo `participant_api`, e a cópia do outro usuário não é "proibida", ela simplesmente não está no seu histórico. Responder 404 evita confirmar que a linha existe.
+> - **5 testes** em `test_messages_api.py`.
+
+### 6.5 Endpoint: deduplicação ✅
 - `HEAD /api/messages/?hash=<sha256-do-blob>` — permite ao cliente saber se uma mensagem já está no histórico antes de gravar.
 - Evita duplicatas quando o usuário importa o mesmo arquivo duas vezes.
 - **Critério de aceite**: importar o mesmo arquivo duas vezes gera apenas um registro.
+
+> ✅ **Feito junto com o 9.4, que depende dele.**
+> - `Message` ganhou `blob_sha256`, preenchido no `save()` e indexado (migration **0004**, com backfill das linhas antigas).
+> - `HEAD /api/messages/?hash=<sha256>` responde **200** se a mensagem já está no histórico *do usuário logado*, **404** se não está e **400** se o parâmetro não é um sha256.
+> - **O POST também ficou idempotente**: reenviar o mesmo arquivo devolve 200 com a mensagem que já existia, em vez de criar outra linha. O HEAD economiza o upload; o POST é o que garante o critério mesmo se o cliente esquecer de perguntar.
+> - **O hash não é único no banco, de propósito.** As duas cópias da mesma mensagem — a "enviada" de quem escreveu e a "recebida" de quem importou (9.4) — têm exatamente os mesmos bytes. A deduplicação acontece sempre dentro do dono (`owned_by`), nunca no banco inteiro.
+> - **A gravação é atômica.** A checagem por hash é o caminho rápido; quem garante é a restrição `message_unique_copy` no banco (migration **0006**). Dois POSTs simultâneos com o mesmo arquivo não criam duas linhas: o segundo bate na restrição e recebe 200 com a linha que já existia.
+> - **8 testes** em `test_messages_api.py`, incluindo um que confirma a recusa no nível do banco.
 
 ### 6.6 Proteção CSRF nas chamadas JS ✅
 - Incluir `{% csrf_token %}` no template e enviar em `X-CSRFToken` em todo `fetch` de escrita.
@@ -813,7 +826,7 @@ Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 
 > ✅ **Adiantado junto com o 2.6** — é o único lugar para conferir o critério do 7.3 enquanto a tela de histórico (Épico 10) não existe. Sem adicionar nem editar; o conteúdo cifrado não aparece, só o tamanho.
 
-### 6.8 Endpoints de backup da chave privada
+### 6.8 Endpoints de backup da chave privada ✅
 > Camada 1 de **D11**. É a diferença entre "espero ainda ter aquele arquivo de meses atrás" e "faço login e digito a senha".
 
 - Model `KeyBackup`: `user` (FK), `blob` (`BinaryField`), `created_at` (`auto_now_add`). Versionado — cada novo backup cria um registro, o mais recente é o ativo.
@@ -823,6 +836,12 @@ Rejeitar **antes** de tentar decifrar, com mensagens distintas para cada caso:
 - Para o servidor é um array de bytes opaco — **o modelo de ameaça não muda**, ele continua sem conseguir ler nada.
 - Registrar no Admin exibindo apenas `user`, `created_at` e tamanho; nunca o conteúdo.
 - **Critério de aceite**: o blob armazenado, aberto em editor hex, não contém a chave em claro; `GET` de outro usuário retorna `404`.
+
+> ✅ **Feito junto com o 11.3 e o 11.6.**
+> - `POST /api/key-backup/` grava (limite de 8 KB; o backup real tem ~180 bytes) e `GET` devolve o mais recente do usuário logado, ou 404 com `backup_not_found`.
+> - **Versionado:** cada envio cria uma linha. O histórico de backups fica no Admin, sem o conteúdo.
+> - **O servidor valida o envelope antes de aceitar** (`key_backup_format.py`): magic `TKEY`, versão e faixa de tamanho. Ele não consegue — nem deve — decifrar, mas recusar bytes aleatórios impede que alguém satisfaça a trava do 11.5 mandando lixo pela API.
+> - O blob é opaco para o servidor: AES-GCM sob chave derivada por PBKDF2 da senha de backup, que nunca sai do navegador. **21 testes** em `test_key_backup.py`.
 
 ---
 
@@ -876,45 +895,63 @@ Bits/caractere:   4,31       (UTF-8: 8,32)
 
 ---
 
-## Épico 8 — Compartilhamento (pen-drive, WhatsApp, e-mail)
+## Épico 8 — Compartilhamento (pen-drive, WhatsApp, e-mail) ✅
 
 > Este épico não existia no backlog anterior, apesar de ser o requisito central do projeto. Cada canal tem um detalhe próprio.
 
-### 8.1 Pen-drive — download do arquivo
+> ✅ **Concluído em 17/09/2026.** A seção *Enviar para o destinatário* aparece no compositor assim que o arquivo é gerado, com quatro caminhos: baixar de novo, copiar como texto, abrir no e-mail e o compartilhamento nativo do sistema.
+>
+> - **O bloco colável leva uma linha de apresentação antes dos marcadores.** O `fromArmor` ignora texto em volta (5.5), então quem recebe entende o que é aquilo sem quebrar a leitura. Há teste com o bloco cercado de texto dos dois lados.
+> - **A cópia tem plano B.** Se o navegador recusar a área de transferência, o bloco aparece numa caixa de texto já selecionada, em vez de falhar em silêncio.
+> - **O botão nativo só existe quando dá.** `navigator.canShare({ files })` é consultado com o arquivo real; no desktop ele simplesmente não aparece, e um `canShare` que estoura também derruba o botão.
+> - **Desistir do compartilhamento não é erro.** `AbortError` é tratado à parte, sem mensagem de falha.
+> - **17 testes** em `tests/share.test.js`.
+>
+> **O que ainda não dá para conferir na tela:** colar o bloco no tradutor, porque a entrada de texto colado é o 9.1. Hoje o round-trip é garantido por teste (`fromArmor(pasteBlock(bytes))`), não pela interface.
+
+### 8.1 Pen-drive — download do arquivo ✅
 - Botão "Baixar arquivo `.treehash`" (usa 5.3).
 - Texto de apoio explicando que basta copiar para o pen-drive.
 - **Critério de aceite**: arquivo baixado, copiado e reaberto em outra máquina decifra corretamente.
 
-### 8.2 WhatsApp / e-mail — bloco de texto colável
+### 8.2 WhatsApp / e-mail — bloco de texto colável ✅
 - Botão "Copiar como texto" que gera o bloco armored (5.5) e usa `navigator.clipboard.writeText`.
 - Resolve os dois canais sem depender de anexo, e funciona bem no celular.
 - Confirmação visual ("copiado!") após o clique.
 - **Critério de aceite**: o bloco copiado, colado no tradutor, decifra corretamente.
 
-### 8.3 E-mail — instrução explícita sobre anexo
+### 8.3 E-mail — instrução explícita sobre anexo ✅
 - **`mailto:` não consegue anexar arquivos.** Não tentar implementar isso.
 - Oferecer duas opções na interface: "Copiar como texto" (8.2) ou "Baixar e anexar manualmente" (8.1), com o botão `mailto:` preenchendo apenas assunto e corpo com uma instrução.
 - **Critério de aceite**: a interface não promete anexo automático em nenhum momento.
 
-### 8.4 Compartilhamento nativo (progressive enhancement)
+### 8.4 Compartilhamento nativo (progressive enhancement) ✅
 - Se `navigator.canShare?.({ files: [...] })` for verdadeiro, exibir botão "Compartilhar" usando `navigator.share`.
 - Abre o menu nativo do sistema (Android/iOS), entregando WhatsApp, e-mail e mais em um clique.
 - Se a API não existir, o botão simplesmente não aparece — os demais caminhos continuam funcionando.
 - **Critério de aceite**: no desktop sem suporte, nada quebra; no celular com suporte, o menu nativo abre com o arquivo anexado.
 
-### 8.5 Aviso sobre o canal
+### 8.5 Aviso sobre o canal ✅
 - Texto curto na interface: o arquivo é seguro para trafegar por qualquer canal, mas **a senha/verificação de identidade nunca deve ir pelo mesmo canal**.
 - **Critério de aceite**: o aviso aparece na tela de compartilhamento.
 
 ---
 
-## Épico 9 — Fluxo de Recebimento ("Tradutor")
+## Épico 9 — Fluxo de Recebimento ("Tradutor") ✅
 
-### 9.1 Template do tradutor
+> ✅ **Concluído em 17/09/2026.** As três entradas do 9.1 funcionam: seletor de arquivo, arrastar e soltar, e o bloco de texto colado. Arquivo e texto caem no mesmo caminho — o texto passa antes pelo `fromArmor`.
+>
+> - **O que decifra é gravado** (9.4): o tradutor pergunta ao 6.5 se a mensagem já está lá e só então faz o `POST` com `direction = "received"`. Importar o mesmo arquivo duas vezes não duplica.
+> - **Servidor fora do ar não atrapalha a leitura.** A mensagem aparece do mesmo jeito, com aviso amarelo de que não foi guardada no histórico e o motivo — mesma escolha do 7.4.
+> - **Cada falha tem título próprio** (9.5): *Bloco de texto inválido*, *Arquivo inválido*, *Faltam as chaves*, *Arquivo adulterado ou chave incorreta* e *Arquivo corrompido*. O texto de cada erro continua vindo do módulo que o detectou, já em português.
+> - **Botão "copiar texto"** no resultado (9.3), com plano B quando o navegador recusa a área de transferência.
+> - **8 testes** novos em `tests/api.test.js` cobrem o hash e a consulta ao 6.5.
+
+### 9.1 Template do tradutor ✅
 - `tradutor.html` com três entradas equivalentes: seletor de arquivo, área de drag-and-drop, e `<textarea>` para colar o bloco armored.
 - **Critério de aceite**: as três formas de entrada funcionam.
 
-### 9.2 Orquestração do pipeline reverso
+### 9.2 Orquestração do pipeline reverso ✅
 ```
 arquivo ou texto armored
   → (fromArmor, se for texto)
@@ -926,19 +963,19 @@ arquivo ou texto armored
 ```
 - **Critério de aceite**: mensagem original aparece corretamente para um arquivo válido.
 
-### 9.3 Exibição da mensagem decodificada
+### 9.3 Exibição da mensagem decodificada ✅
 - Área de leitura não editável, com o texto, a data de criação (`created_at`) e quem enviou (`sender_id`).
 - Botão "copiar texto".
 - **Critério de aceite**: o texto exibido é idêntico ao digitado pelo remetente.
 
-### 9.4 Salvar no histórico do destinatário
+### 9.4 Salvar no histórico do destinatário ✅
 > Faltava no backlog anterior: o Épico 7 salvava no envio, mas nada era gravado quando B importava o arquivo.
 
 - Após decifrar com sucesso, `POST /api/messages/` com `direction = "received"` (6.2).
 - Consultar antes o endpoint de deduplicação (6.5).
 - **Critério de aceite**: importar um arquivo faz a mensagem aparecer no histórico do destinatário; importar duas vezes não duplica.
 
-### 9.5 Tratamento de erros
+### 9.5 Tratamento de erros ✅
 Cada falha tem mensagem própria:
 
 | Situação | Mensagem |
@@ -954,36 +991,47 @@ Cada falha tem mensagem própria:
 
 ---
 
-## Épico 10 — Histórico de Mensagens
+## Épico 10 — Histórico de Mensagens ✅
 
-### 10.1 Template de listagem
+> ✅ **Concluído em 17/09/2026.** Tela em `/history/`, ligada no menu, com filtros, paginação, decifrar e baixar.
+>
+> - **Decifrar de novo (10.2) e baixar de novo (10.3)** buscam o blob pelo 6.4. O nome do arquivo é recalculado pelo `fileName(createdAt)` do `format.js`, o mesmo que gerou o nome original — o arquivo rebaixado sai idêntico, com o mesmo nome.
+> - **Filtros (10.4)** por origem e por intervalo de datas, sobre o `created_at` (D7), que é a data que a tela mostra. Data ou origem inválida devolve 400 com `invalid_filter`, em vez de ignorar o filtro em silêncio.
+> - **Sem a chave, a lista continua de pé (10.5).** O aviso aparece e o botão *Decifrar* fica desligado, mas *Baixar* continua funcionando: o download é só bytes, não precisa de chave nenhuma. Isso é o que permite recuperar o arquivo num aparelho novo e abri-lo noutro que tenha a chave.
+> - **11 testes** novos no servidor e **6** no cliente.
+
+### 10.1 Template de listagem ✅
 - `historico.html`, listando enviadas e recebidas com data, direção e tamanho.
 - Carrega via `GET /api/messages/` (6.3).
 - **Critério de aceite**: lista carrega e renderiza corretamente.
 
-### 10.2 Ação "decifrar novamente"
+### 10.2 Ação "decifrar novamente" ✅
 - Botão em cada item que busca o blob via 6.4 e roda o pipeline do 9.2.
 - **Critério de aceite**: mensagem antiga é decifrada sem precisar do arquivo original.
 
-### 10.3 Ação "baixar novamente"
+### 10.3 Ação "baixar novamente" ✅
 - Reoferece o download do `.treehash` original a partir do blob armazenado.
 - **Critério de aceite**: o arquivo rebaixado é byte-a-byte idêntico ao original.
 
-### 10.4 Paginação e filtros
+### 10.4 Paginação e filtros ✅
 - `Paginator` no endpoint; filtro por direção (enviadas/recebidas) e por intervalo de datas via query params.
 - **Critério de aceite**: histórico com muitas mensagens carrega em páginas sem travar a tela.
 
-### 10.5 Aviso de dependência da chave local
+### 10.5 Aviso de dependência da chave local ✅
 - Se não houver chave privada no IndexedDB, o histórico ainda lista as mensagens, mas exibe aviso: "o conteúdo não pode ser lido neste dispositivo — restaure sua chave (ver Épico 11)".
 - **Critério de aceite**: sem chave local, a lista aparece com o aviso e sem erro de JS.
 
 ---
 
-## Épico 11 — Confiança: verificação de identidade e backup de chave
+## Épico 11 — Confiança: verificação de identidade e backup de chave 🟡
+
+> 🟡 **11.1 a 11.6 concluídos em 17/09/2026. Falta o 11.7** (recuperação assistida pelo outro usuário), que é uma entrega à parte — ver a nota no próprio item.
+>
+> Tudo isso vive na tela **Identidade** (`/identity/`), nova no menu.
 
 > Este épico fecha dois furos do modelo de ameaça que o backlog anterior não cobria.
 
-### 11.1 Verificação de fingerprint (defesa contra MITM do servidor)
+### 11.1 Verificação de fingerprint (defesa contra MITM do servidor) ✅
 **Problema:** o documento promete que "o servidor nunca vê texto puro", e é verdade — mas o servidor **distribui as chaves públicas** (4.3). Um servidor comprometido entrega a chave dele no lugar da chave do outro usuário e passa a ler tudo, sem que ninguém perceba. É exatamente o ataque que Signal e WhatsApp mitigam com o "código de segurança".
 
 - Calcular `SHA-256` da JWK canônica da chave pública.
@@ -991,13 +1039,23 @@ Cada falha tem mensagem própria:
 - Tela "Verificação de identidade" mostrando **o meu fingerprint e o do outro usuário**, lado a lado.
 - **Critério de aceite**: os dois usuários, em máquinas diferentes, veem o mesmo par de fingerprints.
 
-### 11.2 Marcar como verificado
+> ✅ **O fingerprint é calculado nos dois lados e os dois chegam ao mesmo valor.** O navegador monta a forma canônica da JWK (as mesmas 4 chaves em ordem, sem espaços) e tira o SHA-256; o servidor faz o mesmo em `jwk.fingerprint()`. Um teste em cada linguagem trava o mesmo valor para o mesmo vetor de chave — se um lado mudar, o outro acusa.
+>
+> A tela mostra os dois códigos lado a lado, em 12 grupos de 4 dígitos. **O servidor nunca envia o fingerprint pronto**: se enviasse, um servidor comprometido poderia mandar o código "certo" junto com a chave falsa. O navegador calcula a partir da chave que recebeu.
+
+### 11.2 Marcar como verificado ✅
 - Botão "Já conferi pessoalmente" que grava `fingerprint_verified = True` no `Profile`.
 - Enquanto não verificado, exibir um aviso discreto e permanente no compositor.
 - Se a chave pública do outro mudar, resetar a flag e exibir aviso destacado.
 - **Critério de aceite**: a flag aparece no Admin; a mudança de chave reseta a verificação.
 
-### 11.3 Cifrar a chave privada com senha (base das duas camadas de backup)
+> ✅ **A flag vive no perfil de quem é conferido.** `marcio.profile.fingerprint_verified = True` significa "a chave do marcio foi conferida pelo outro usuário" — e como são exatamente 2 participantes, quem marca é sempre o outro. Isso encaixa com o 4.3, que já zerava a flag quando uma chave nova é registrada.
+>
+> **O servidor confere o código antes de marcar.** O cliente envia o fingerprint que exibiu; se ele não bate com a chave registrada naquele momento, a resposta é 409 e nada é marcado — é o caso de a página estar velha, ou de a chave ter mudado no meio do caminho.
+>
+> No compositor, enquanto não houver confirmação, a faixa de avisos diz que falta conferir o código.
+
+### 11.3 Cifrar a chave privada com senha (base das duas camadas de backup) ✅
 **Problema:** a chave privada existe **apenas** no IndexedDB. Limpar dados do navegador, trocar de máquina ou usar aba anônima significa perder o acesso a todo o histórico, permanentemente. É o cenário mais provável de a demonstração falhar no dia da apresentação.
 
 - Exportar o par como JWK e cifrar com AES-GCM sob chave derivada de uma **senha de backup** via `PBKDF2` (SHA-256, **600.000 iterações** — recomendação atual da OWASP, ~0,5 s no desktop, salt aleatório de 16 bytes).
@@ -1007,17 +1065,31 @@ Cada falha tem mensagem própria:
 - Avisar que a senha não pode ser recuperada.
 - **Critério de aceite**: o blob gerado não contém a chave em claro (verificável abrindo em editor hex); o mesmo blob é aceito tanto pelo endpoint quanto pelo importador de arquivo.
 
-### 11.4 Importar a chave privada (restauração)
+> ✅ **`key-backup.js`, com o layout de arquivo previsto aqui.** Cabeçalho de 37 bytes — magic `TKEY`, versão, iterações (uint32), salt (16) e IV (12) — seguido do ciphertext. Os 25 primeiros bytes entram como AAD, então mexer nas iterações ou no salt invalida o arquivo.
+>
+> - **O teste do critério de aceite existe:** o blob é varrido e não contém nem a coordenada `d` nem o `x` da chave em claro.
+> - **As iterações vêm do arquivo, com limite.** Ler o parâmetro do próprio arquivo é o que permite abrir backups antigos se o número mudar um dia; o limite de 2 milhões evita que um arquivo hostil trave o navegador pedindo uma derivação eterna.
+> - **O mesmo blob vai para as duas camadas** no mesmo clique: sobe para o servidor (6.8) e é baixado como `chave-<usuário>-<data>.treehashkey`.
+
+### 11.4 Importar a chave privada (restauração) ✅
 - Ler o `.treehashkey`, pedir a senha, decifrar e gravar no IndexedDB.
 - Senha errada → mensagem clara, sem revelar nada sobre a chave.
 - **Critério de aceite**: restaurar em um navegador limpo dá acesso ao histórico completo; senha errada falha de forma limpa.
 
-### 11.5 Onboarding de primeiro acesso
+> ✅ **`openBackup` + `keyPairFrom` reconstroem o par a partir do JWK guardado.** O teste mais forte aqui não é o round-trip do arquivo: é derivar a chave AES com o par restaurado e decifrar uma mensagem cifrada com o par original. É isso que prova que restaurar devolve o histórico.
+>
+> Senha errada e arquivo adulterado dão a **mesma** mensagem — "senha incorreta ou arquivo corrompido" —, porque distinguir os dois casos contaria a quem tem o arquivo se a senha testada chegou perto.
+
+### 11.5 Onboarding de primeiro acesso ✅
 - Fluxo guiado no primeiro login: gerar chave → publicar chave pública → definir senha de backup → **enviar o backup ao servidor** (6.8) → **baixar o `.treehashkey`** → verificar fingerprint.
 - As duas camadas de backup são criadas no mesmo passo, a partir do mesmo blob (11.3) — para o usuário é uma ação só.
 - **Critério de aceite**: o usuário não consegue chegar ao compositor sem ter passado pelo backup.
 
-### 11.6 Recuperação a partir do backup no servidor
+> ✅ **A trava é no servidor, não na tela.** Compositor e tradutor só abrem se existir um `KeyBackup` do usuário; sem ele, redirecionam para `/identity/`. Não dá para contornar digitando a URL.
+>
+> O histórico e a própria tela de identidade continuam abertos: o histórico porque ele funciona sem chave (10.5), e a identidade porque é onde o backup é criado.
+
+### 11.6 Recuperação a partir do backup no servidor ✅
 > Camada 1 de **D11** — o caminho principal de recuperação.
 
 - No boot, se não houver chave no IndexedDB, consultar `GET /api/key-backup/` (6.8).
@@ -1026,7 +1098,12 @@ Cada falha tem mensagem própria:
 - Senha errada → mensagem clara, sem revelar nada sobre a chave. Limitar tentativas no cliente para desencorajar força bruta local.
 - **Critério de aceite**: em um navegador limpo, login mais senha de backup devolvem o histórico completo, sem precisar de arquivo nenhum.
 
-### 11.7 Recuperação assistida pelo outro usuário
+> ✅ **A tela de identidade consulta o 6.8 sozinha e mostra o bloco de restauração quando há backup guardado**, com a data. A senha abre o blob no navegador, o par volta para o IndexedDB e a página recarrega para tudo ser derivado de novo.
+>
+> - **Tentativas limitadas a 5** por carregamento de página, como o item pede. É um freio contra tentativa e erro manual; quem tem o blob e tempo continua limitado pelo PBKDF2 de 600 mil iterações, que é a defesa real.
+> - **Se a chave local não for a registrada**, a tela avisa antes mesmo de o usuário tentar qualquer coisa: o `publish` devolve 409, e é esse o sinal de que o navegador perdeu a chave.
+
+### 11.7 Recuperação assistida pelo outro usuário ⏳
 > Camada 3 de **D11** — último recurso, possível apenas porque o sistema tem exatamente 2 usuários.
 
 Se um usuário perde a chave e nenhum backup funciona, o outro ainda tem a dele — e como todo o histórico está cifrado sob o mesmo segredo compartilhado estático, **ele consegue decifrar tudo**. O fluxo:
@@ -1040,28 +1117,54 @@ Se um usuário perde a chave e nenhum backup funciona, o outro ainda tem a dele 
 - Processar em lotes, com barra de progresso — pode haver muitas mensagens.
 - **Critério de aceite**: após a recuperação, A lê todas as mensagens anteriores à perda da chave; um teste automatizado cobre a recifragem de um histórico de ao menos 20 mensagens.
 
+> ⏳ **Único item do épico que ficou de fora**, e não por esquecimento: ele mexe no histórico inteiro.
+>
+> **Decidido em 17/09/2026: não reescrever blobs.** Substituir o que já está gravado contraria o 6.7 ("o histórico é imutável") e o que o projeto promete — o servidor guarda exatamente o que o cliente gerou, byte a byte. A recifragem vai gravar **linhas novas** para quem perdeu a chave; as antigas continuam onde estão, ilegíveis para ele e legíveis para quem manteve a chave.
+>
+> O resto do trabalho é conhecido: reverificar o fingerprint (obrigatório, é o que impede alguém de se passar por A), decifrar e recifrar em lotes com barra de progresso, e um teste com pelo menos 20 mensagens.
+
 ---
 
-## Épico 12 — Interface e UX
+## Épico 12 — Interface e UX ✅
 
-### 12.1 Layout base
+> ✅ **Concluído em 17/09/2026**, junto com o 12.5 que já estava feito.
+
+### 12.1 Layout base ✅
 - Template `base.html` com navegação: Compor · Tradutor · Histórico · Identidade · Sair.
 - Indicação de qual usuário está logado.
 - **Critério de aceite**: navegação consistente em todas as páginas.
 
-### 12.2 CSS próprio, sem framework
+> ✅ A navegação ficou completa quando o Épico 10 trouxe o Histórico e o 11 a Identidade. O nome do usuário logado e o botão de sair ficam à direita, em todas as páginas, e a tela de login não mostra menu nenhum.
+
+### 12.2 CSS próprio, sem framework ✅
 - Escopo pequeno demais para justificar Bootstrap/Tailwind. CSS único, com variáveis para as cores.
 - Responsivo — o tradutor será usado no celular com frequência (8.4).
 - **Critério de aceite**: as quatro telas funcionam em 360px de largura.
 
-### 12.3 Estados de tela padronizados
+> ✅ CSS único, com variáveis de cor, sem framework. Três pontos de quebra: 720px (a tabela do percurso desce para baixo da árvore), 480px (botões e filtros ocupam a largura toda) e 400px (topo mais compacto, fingerprint menor e quebrando linha).
+>
+> **Limite honesto:** conferi as regras e os pontos de quebra lendo o CSS, não abrindo as telas em 360px — daqui não tenho navegador. Vale abrir pelo túnel (16.3) antes de considerar o item fechado de verdade.
+
+### 12.3 Estados de tela padronizados ✅
 - Componentes reutilizáveis para: carregando, sucesso, erro, vazio.
 - **Critério de aceite**: nenhuma tela fica sem resposta visual durante uma operação assíncrona.
 
-### 12.4 Indicador de estado criptográfico
+> ✅ Quatro estados, todos no `ui.js`: `showLoading`, `showStatus` (sucesso, erro e aviso), `showEmpty` e `clearStatus`.
+>
+> - **Carregando** agora aparece em toda operação demorada: gerar a mensagem, ler o arquivo, carregar o histórico e — onde mais importa — cifrar ou abrir o backup, que passa 600 mil rodadas de PBKDF2 e demora o suficiente para parecer travado sem aviso.
+> - **Vazio** virou componente: o `showEmpty` monta `<li>` dentro de lista e `<p>` fora dela, então serve tanto para o histórico quanto para qualquer outra tela.
+> - A animação do "carregando" respeita `prefers-reduced-motion`.
+
+### 12.4 Indicador de estado criptográfico ✅
 - Badge permanente no cabeçalho, cobrindo cinco sinais: chave local presente? chave do outro conhecida? fingerprint verificado? backup no servidor criado? armazenamento persistente concedido (4.9)?
 - Qualquer sinal negativo leva, com um clique, à ação que o resolve.
 - **Critério de aceite**: o usuário identifica em um olhar se o canal está pronto para uso e se sua chave está protegida contra perda.
+
+> ✅ Badge no topo, em todas as páginas, com os cinco sinais previstos: chave deste navegador, chave do outro usuário, identidade conferida, backup guardado e armazenamento permanente. Mostra "3/5" e fica verde só quando os cinco estão em ordem; o clique leva para a tela de Identidade, que é onde três deles se resolvem.
+>
+> - **A lógica ficou fora do DOM** (`buildSignals` e `summarize` em `badge.js`), então dá para testar: **7 testes** em `tests/badge.test.js`.
+> - O sinal da chave local usa o 409 do write-once: se o servidor recusa a chave deste navegador, é porque ela não é a registrada — e a dica manda restaurar o backup.
+> - O armazenamento permanente é consultado com `navigator.storage.persisted()`, que **não** dispara pedido de permissão — quem pede é o boot da página (4.9).
 
 ### 12.5 Árvore Binária de Busca na tela ✅
 
@@ -1090,23 +1193,54 @@ Se um usuário perde a chave e nenhum backup funciona, o outro ainda tem a dele 
 
 ---
 
-## Épico 13 — Segurança e Hardening
+## Épico 13 — Segurança e Hardening ✅
 
-### 13.1 Auditoria de dados sensíveis
+### 13.1 Auditoria de dados sensíveis ✅
 - Revisar todo o backend confirmando que texto puro e chaves privadas nunca chegam ao servidor.
 - Buscar por `print(`, `logger.debug(` e `console.log(` em caminhos que tocam plaintext.
 - **Critério de aceite**: checklist de revisão documentado, com cada endpoint listado e assinado.
 
-### 13.2 Rate limiting no login
+> ✅ **Revisão feita endpoint a endpoint em 17/09/2026.** Nenhum recebe texto puro nem chave privada:
+>
+> | Endpoint | Recebe | Guarda | Devolve |
+> |---|---|---|---|
+> | `POST /api/public-key/` | JWK **pública** | a forma canônica no `Profile` | a mesma chave |
+> | `GET /api/public-key/<user>/` | — | — | a chave pública do outro |
+> | `GET /api/messages/` | filtros | — | metadados, **sem** blob |
+> | `HEAD /api/messages/?hash=` | um sha256 | — | só o código de status |
+> | `POST /api/messages/` | blob cifrado em base64 | o blob exatamente como veio | metadados |
+> | `GET /api/messages/<id>/blob/` | — | — | o mesmo blob cifrado |
+> | `POST /api/key-backup/` | blob cifrado por senha | o blob | data e tamanho |
+> | `GET /api/key-backup/` | — | — | o blob cifrado |
+> | `POST /api/fingerprint/` | o código conferido | a flag de verificação | o estado da chave |
+>
+> - **Nenhum `print`, `logger.` ou `console.log`** no código do servidor ou do cliente — conferido por busca, e é isso que a busca do item pedia.
+> - `django.db.backends` fica em `WARNING` no `LOGGING` (13.6): em `DEBUG` o Django loga o SQL **com os parâmetros**, e é por ali que um blob vazaria para o log.
+> - As funções que manipulam blob e senha levam `@sensitive_variables`, então não aparecem em relatório de exceção.
+
+### 13.2 Rate limiting no login ✅
 - `django-ratelimit` na view de login (ex.: 5 tentativas por IP a cada 15 minutos).
 - **Critério de aceite**: exceder o limite bloqueia novas tentativas temporariamente.
 
-### 13.3 Content Security Policy
+> ✅ **Sem dependência nova.** O limitador é um decorator de 30 linhas (`messenger/throttle.py`) sobre o cache do Django: conta tentativas por endereço, bloqueia com **429** depois de 5 em 15 minutos e zera o contador quando o login dá certo. Parâmetros por variável de ambiente.
+>
+> - **A contagem é atômica** (`cache.add` seguido de `cache.incr`): tentativas simultâneas do mesmo endereço não sobrescrevem umas às outras, que é o que aconteceria lendo e escrevendo o contador em dois passos.
+> - **`GET` nunca é bloqueado** — a tela de login continua abrindo, só o envio do formulário é barrado.
+> - **O endereço vem do `REMOTE_ADDR`**, e só olha o `X-Forwarded-For` quando a aplicação está atrás de proxy (detectado pelo `SECURE_PROXY_SSL_HEADER`). Confiar no cabeçalho sem proxy deixaria qualquer um trocar de "IP" e furar o limite.
+> - ⚠️ **Limite conhecido:** o cache padrão é por processo. Com vários workers do gunicorn, cada um conta em separado e o limite efetivo multiplica. Em produção isso pede um cache compartilhado (Redis ou o banco).
+> - **7 testes** em `test_security.py`, junto com os da CSP.
+
+### 13.3 Content Security Policy ✅
 - Cabeçalho CSP restritivo: `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'`.
 - Sem `unsafe-inline` — todo JS em arquivo externo. Isso protege a chave privada no IndexedDB contra XSS, que é o vetor mais realista neste app.
 - **Critério de aceite**: nenhum script inline no HTML; o console não reporta violações de CSP.
 
-### 13.4 Configurações de produção
+> ✅ **Middleware próprio** (`core/middleware.py`), sem dependência. A política do app é a prevista aqui, mais `style-src 'self'`, `form-action 'self'` e `frame-ancestors 'none'`.
+>
+> - **Um teste varre as quatro telas** e falha se aparecer qualquer `<script>` que não seja `src=` externo ou o `type="application/json"` do `json_script` — que é dado inerte, não executa, e por isso não esbarra na CSP.
+> - **O `/admin/` recebe uma política à parte, com `unsafe-inline`.** O Admin do Django usa scripts e estilos embutidos nas próprias páginas; aplicar a política estrita ali quebraria a tela que o time usa para liberar chave. O que a CSP protege é a chave privada no IndexedDB, e o Admin não tem acesso a ela.
+
+### 13.4 Configurações de produção ✅
 - `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `SECURE_HSTS_SECONDS` ativos fora de `localhost`, via variável de ambiente.
 - `SESSION_COOKIE_HTTPONLY = True` e `SESSION_COOKIE_SAMESITE = "Lax"`.
 - ⚠️ **Atrás de proxy reverso** (Render, Railway, Fly — todos terminam o TLS no proxy e repassam HTTP para a aplicação):
@@ -1116,57 +1250,91 @@ Se um usuário perde a chave e nenhum backup funciona, o outro ainda tem a dele 
   Sem essa linha, o Django vê "HTTP", `SECURE_SSL_REDIRECT` redireciona para HTTPS, o proxy repassa HTTP de novo — **loop infinito de redirecionamento**, e o site inteiro fica inacessível.
 - **Critério de aceite**: `python manage.py check --deploy` não reporta avisos e o site em produção carrega sem loop de redirecionamento.
 
-### 13.5 Limites de tamanho
+> ✅ Faltavam o HSTS e a conferência. Acrescentados `SECURE_HSTS_SECONDS` (um ano, configurável), `SECURE_HSTS_INCLUDE_SUBDOMAINS` e `SECURE_HSTS_PRELOAD`, todos dentro do `if not DEBUG`. O `SECURE_PROXY_SSL_HEADER` já estava lá desde o Épico 1 — é a linha que evita o loop de redirecionamento.
+>
+> **`manage.py check --deploy` com `DJANGO_DEBUG=0`**: só sobra o aviso `security.W009`, do `SECRET_KEY` de exemplo do `.env` local. Em produção, com uma chave gerada de verdade, a saída fica limpa. Para gerar: `python -c "import secrets; print(secrets.token_urlsafe(64))"`.
+
+### 13.5 Limites de tamanho ✅
 - Limite client-side no compositor (ex.: 100.000 caracteres) e no tradutor (ex.: 1 MB de arquivo).
 - `DATA_UPLOAD_MAX_MEMORY_SIZE` ajustado no Django para o endpoint de histórico.
 - **Critério de aceite**: arquivos acima do limite são rejeitados com mensagem clara antes de qualquer processamento.
 
-### 13.6 Revisão de logs
+> ✅ Três limites, e o cliente recusa **antes** de processar:
+> - **Compositor:** 100.000 caracteres. Passou disso, o contador muda de cor e o botão desliga.
+> - **Tradutor:** 1 MB, conferido no `file.size` antes de ler o arquivo, e de novo no tamanho do bloco colado depois do `fromArmor`.
+> - **Servidor:** `MAX_SIZE` de 1 MB no `message_format` (já existia) e `DATA_UPLOAD_MAX_MEMORY_SIZE` de 3 MB, que é o base64 de 1 MB com folga.
+>
+> O limite de 1 MB agora está travado nos dois lados por teste, como o magic do D5: se um lado mudar, o outro acusa.
+
+### 13.6 Revisão de logs ✅
 - Configurar `LOGGING` garantindo que nenhum dado sensível seja registrado, inclusive em stack traces.
 - **Critério de aceite**: forçar erro em cada endpoint e conferir que nenhum log contém blob, chave ou senha.
 
-### 13.7 `DEBUG` e `ALLOWED_HOSTS`
+> ✅ `LOGGING` explícito no `settings.py`, com um handler de console e três decisões:
+> - **`django.db.backends` em `WARNING`** — é o logger que, em `DEBUG`, imprime o SQL com os parâmetros. Seria por ali que um blob cifrado apareceria no log.
+> - **`django.request` em `ERROR`** — 404 e 400 não viram ruído, e o corpo da requisição nunca é logado.
+> - **Nível da raiz por variável de ambiente** (`LOG_LEVEL`), para subir o detalhe em depuração sem editar código.
+>
+> Junto com o `@sensitive_variables` do 13.1, é o que impede blob e senha de saírem num rastreamento de erro.
+
+### 13.7 `DEBUG` e `ALLOWED_HOSTS` ✅
 - Controlados por variável de ambiente; `DEBUG = False` por padrão (falhar seguro).
 - **Critério de aceite**: rodar sem `.env` sobe em modo produção, não em modo debug.
 
+> ✅ Já estava assim desde o Épico 1 e foi reconferido: `DEBUG = config("DJANGO_DEBUG", default=False, cast=bool)` — sem `.env`, o app sobe em modo produção. `ALLOWED_HOSTS` também vem do ambiente, e os domínios de túnel só entram na lista quando `DEBUG` está ligado.
+
 ---
 
-## Épico 14 — Testes e Qualidade
+## Épico 14 — Testes e Qualidade 🟡
 
-### 14.1 Testes JS — Huffman
+> 🟡 **14.1 a 14.5, 14.7 e 14.9 concluídos em 17/09/2026.** O 14.6 e o 14.8 têm o roteiro escrito em [`roteiro-de-testes.md`](roteiro-de-testes.md), mas a execução é manual e cabe à equipe — e a camada 3 do 14.8 depende do 11.7.
+
+### 14.1 Testes JS — Huffman ✅
 - Ver 3.5.
 
-### 14.2 Testes JS — cifragem
+### 14.2 Testes JS — cifragem ✅
 - Ver 4.8.
 
-### 14.3 Testes JS — formato e armor
+### 14.3 Testes JS — formato e armor ✅
 - Round-trip de `empacotar`/`desempacotar` (5.1).
 - Cada caso de validação estrita do 5.2.
 - Round-trip do armor, incluindo texto com lixo em volta (5.5).
 - **Critério de aceite**: cobertura de todos os caminhos de erro do 5.2.
 
-### 14.4 Teste de interoperabilidade entre os dois lados
+### 14.4 Teste de interoperabilidade entre os dois lados ✅
 - Teste que instancia **dois pares de chaves diferentes**, deriva a chave AES dos dois lados, cifra com um e decifra com o outro.
 - É o teste que pega erros de `salt`/`info` (D4) — o tipo de bug que passa despercebido quando só se testa um lado.
 - **Critério de aceite**: A cifra → B decifra, e B cifra → A decifra, ambos com o texto exato.
 
-### 14.5 Testes Django
+> ✅ Coberto em dois níveis: `crypto.test.js` tem "Alice cifra e Bob decifra" e o caminho inverso, com dois pares de chaves de verdade; `pipeline.test.js` faz o mesmo pelo pipeline inteiro em "funciona nos dois sentidos". Desde o 14.9, os vetores fixos fazem o teste na direção A → B partindo de arquivos gravados no repositório.
+
+### 14.5 Testes Django ✅
 - Login/logout (Épico 2).
 - Cada endpoint (Épicos 4.3 e 6): sucesso, não autenticado, acesso negado, entrada malformada.
 - Write-once da chave pública (409 no segundo POST).
 - Deduplicação (6.5).
 - **Critério de aceite**: `python manage.py test` passa 100%.
 
-### 14.6 Teste end-to-end manual
+> ✅ **150 testes**, com `manage.py test` passando por inteiro. Cobrem login e logout, cada endpoint nos quatro estados (sucesso, sem login, sem permissão e entrada malformada), o write-once da chave pública, a deduplicação do 6.5, a migration 0003 com dados reais, a CSP e o limite de login.
+
+### 14.6 Teste end-to-end manual 🟡
 - Roteiro escrito: A gera chave → publica → verifica fingerprint → compõe → baixa → B importa → decifra → confere histórico dos dois lados.
 - Executar em **duas máquinas/navegadores diferentes**, não em duas abas.
 - **Critério de aceite**: o roteiro completo passa sem intervenção manual em nenhuma etapa criptográfica.
 
-### 14.7 Teste de adulteração manual
+> 🟡 **Roteiro escrito** em [`roteiro-de-testes.md`](roteiro-de-testes.md), com 14 passos e o que observar em cada um. **A execução em duas máquinas é de vocês** — daqui não dá para rodar dois navegadores de verdade.
+>
+> O passo 5 é o único que exige trabalho manual de propósito: comparar os códigos de segurança por um canal fora do app. É a verificação do 11.1, e automatizá-la seria o mesmo que não tê-la.
+
+### 14.7 Teste de adulteração manual ✅
 - Abrir um `.treehash` em editor hex e alterar: 1 byte do ciphertext; 1 byte do `created_at` (testa o AAD); o `sender_id`.
 - **Critério de aceite**: os três casos são rejeitados; o sistema nunca exibe texto incorreto.
 
-### 14.8 Teste de perda de chave — as três camadas
+> ✅ **Automatizado** em `tests/vectors.test.js`, sobre os vetores fixos: um byte trocado no ciphertext, um no `created_at` e o `sender_id` invertido. Os três são recusados com "arquivo adulterado", e um quarto teste confirma que nenhum deles devolve texto parcial.
+>
+> O `sender_id` é o caso que prova o AAD: o arquivo continua estruturalmente válido — o `unpack` lê `1` sem reclamar —, e quem recusa é a tag do AES-GCM. O roteiro manual está no [`roteiro-de-testes.md`](roteiro-de-testes.md) para conferir a mensagem na tela.
+
+### 14.8 Teste de perda de chave — as três camadas 🟡
 Limpar o IndexedDB e validar cada camada de **D11** isoladamente:
 - **Camada 1** — restaurar via backup no servidor (11.6), apenas com login e senha de backup.
 - **Camada 2** — restaurar via arquivo `.treehashkey` (11.4), com o endpoint de backup indisponível.
@@ -1174,13 +1342,29 @@ Limpar o IndexedDB e validar cada camada de **D11** isoladamente:
 - Confirmar também que, sem nenhuma chave, o histórico lista as mensagens com o aviso do 10.5 em vez de quebrar.
 - **Critério de aceite**: as três camadas recuperam o acesso seguindo apenas a documentação, cada uma testada com as demais desabilitadas.
 
-### 14.9 Vetores de teste fixos (compartilhados pela equipe)
+> 🟡 **Roteiro escrito** para as camadas 1 e 2 e para o caso sem chave nenhuma (10.5), em [`roteiro-de-testes.md`](roteiro-de-testes.md). A camada 3 espera o 11.7.
+>
+> O que já está automatizado é o miolo criptográfico: `key-backup.test.js` prova que o par restaurado do backup deriva a mesma chave AES do original e decifra o que o par antigo cifrou. O que o roteiro cobre é o resto — apagar o IndexedDB, a tela reagir, a senha errada falhar direito.
+
+### 14.9 Vetores de teste fixos (compartilhados pela equipe) ✅
 > Cada dev tem o próprio banco e, portanto, chaves diferentes — um `.treehash` gerado numa máquina **não abre** em outra. Sem uma base comum, o time não tem como testar compatibilidade de formato.
 
 - Commitar em `tests/vectors/`: um par de chaves ECDH de teste conhecido (em JWK, claramente marcado como **somente para teste**), e alguns arquivos `.treehash` de referência com o texto esperado de cada um.
 - Cobrir: texto curto (com fallback de compressão acionado), parágrafo em PT-BR, texto com emoji, e um arquivo deliberadamente adulterado.
 - Os testes do 14.3 e 14.4 rodam contra esses vetores.
 - **Critério de aceite**: os vetores decifram para o texto esperado em qualquer máquina da equipe; uma mudança acidental no formato ou na tabela de frequência quebra o teste imediatamente.
+
+> ✅ **`tests/vectors/` versionado**, com o par de chaves de teste (marcado no próprio arquivo como público e só para teste), três arquivos de referência e um adulterado:
+>
+> | Arquivo | Conteúdo | Cobre |
+> |---|---|---|
+> | `short.treehash` | "Chego às 19h." | O fallback do 3.3: 57 bytes, sem compressão |
+> | `paragraph.treehash` | Parágrafo em PT-BR | Compressão de verdade, 133 bytes |
+> | `emoji.treehash` | Texto com emoji | UTF-8 de 4 bytes passando pela árvore |
+> | `tampered.treehash` | Cópia do parágrafo com um byte trocado | A recusa pela tag |
+>
+> - **11 testes** em `tests/vectors.test.js`. Eles travam de uma vez o formato binário (D5), a tabela de frequência do Huffman (D1–D3) e os parâmetros de derivação (D4): qualquer um que mude, os vetores param de abrir.
+> - O gerador está em `tools/generate-vectors.js`, mas **regenerar é a última coisa a fazer** quando um teste falha — o valor deles está em não mudarem. O aviso está no roteiro.
 
 ---
 
@@ -1284,6 +1468,82 @@ docker compose --profile tunnel up tunnel
 ---
 
 ## Changelog
+
+### Revisão 16 — correções de revisão de código
+
+| Mudança | Motivo |
+|---|---|
+| **Contador de login atômico** | `get` seguido de `set` deixava tentativas simultâneas se sobrescreverem e passarem do limite |
+| **Restrição `message_unique_copy` (migration 0006)** | A checagem de duplicata e a gravação não eram atômicas: dois POSTs iguais ao mesmo tempo criavam duas linhas |
+| **Envelope do backup validado no servidor (`key_backup_format.py`)** | A trava do 11.5 aceitava qualquer linha; bytes aleatórios pela API liberavam o compositor |
+| **Backup: a tela não mente mais sobre substituir** | O 6.8 é versionado de propósito; quem falava em substituir era só o texto |
+| **Falha ao atualizar a tela ≠ falha ao guardar** | Depois de o servidor aceitar o backup, um erro na consulta seguinte fazia o usuário repetir a operação |
+| **Histórico ignora resposta atrasada** | Trocar de página rápido deixava a resposta antiga sobrescrever a nova |
+
+### Revisão 15 — Épico 14 (testes e qualidade)
+
+| Mudança | Motivo |
+|---|---|
+| **Vetores fixos versionados (14.9)** | Cada dev tem chaves diferentes; sem uma base comum ninguém testa compatibilidade de formato |
+| **Adulteração automatizada (14.7)** | Os três casos do item viraram teste; o `sender_id` é o que prova o AAD |
+| **`roteiro-de-testes.md`** | O que sobra é manual por natureza: duas máquinas, editor hexadecimal e apagar o IndexedDB |
+| **14.6 e 14.8 ficam 🟡** | O roteiro existe, a execução é da equipe — e a camada 3 do 14.8 espera o 11.7 |
+
+### Revisão 14 — Épico 13 (segurança e hardening)
+
+| Mudança | Motivo |
+|---|---|
+| **CSP por middleware próprio (13.3)** | Protege a chave privada no IndexedDB contra XSS, que é o vetor mais realista aqui |
+| **Política separada para o `/admin/`** | O Admin do Django usa script e estilo embutidos; a política estrita quebraria a tela que libera chave |
+| **Limite de login sem dependência nova (13.2)** | 30 linhas sobre o cache do Django resolvem o caso; a ressalva de vários workers ficou escrita |
+| **`LOGGING` explícito (13.6)** | `django.db.backends` em `DEBUG` imprime SQL com parâmetros — é por ali que um blob vazaria |
+| **Limites de tamanho nos dois lados (13.5)** | O cliente recusa antes de processar, e o limite de 1 MB está travado por teste nas duas linguagens |
+| **11.7: decidido não reescrever blobs** | Reescrever contraria o que o projeto promete sobre o servidor guardar o que o cliente gerou |
+
+### Revisão 13 — Épico 12 (interface e UX)
+
+| Mudança | Motivo |
+|---|---|
+| **Indicador de estado no topo (12.4)** | Cinco sinais num olhar: sem isso o usuário não sabe se o canal está pronto nem se a chave está protegida |
+| **Estados de tela reutilizáveis (12.3)** | Faltava "carregando" e "vazio"; cifrar o backup demora e sem aviso parece travado |
+| **Lógica do badge fora do DOM** | `buildSignals` é função pura, então tem teste; o desenho fica numa função fina |
+| **Terceiro ponto de quebra, em 400px** | O fingerprint de 48 dígitos e o topo com cinco itens não cabiam em tela estreita |
+
+### Revisão 12 — Épico 11 (identidade e backup de chave)
+
+| Mudança | Motivo |
+|---|---|
+| **11.1 a 11.6 concluídos** | Eram os dois furos mais sérios: distribuição de chave sem verificação e chave privada sem cópia |
+| **Fingerprint calculado nos dois lados, com o mesmo teste** | O servidor nunca envia o código pronto — se enviasse, poderia mandar o código "certo" junto com a chave falsa |
+| **6.8 junto do 11.3** | As duas camadas de backup do D11 saem do mesmo blob, no mesmo clique |
+| **Compositor e tradutor exigem backup (11.5)** | Perder o navegador sem backup é perder o histórico, e não há como desfazer |
+| **11.7 ficou para depois** | Ele reescreve blobs já gravados, o que contraria a imutabilidade do 6.7; a decisão vem antes do código |
+
+### Revisão 11 — Épico 10 (histórico) e o blob do 6.4
+
+| Mudança | Motivo |
+|---|---|
+| **Épico 10 concluído** | Tela em `/history/` com filtros, paginação, decifrar e baixar de novo |
+| **6.4 antecipado** | O 10.2 e o 10.3 precisam do blob guardado; sem ele a tela só listaria metadados |
+| **404 em vez de 403 para a cópia do outro** | O item foi escrito antes do conceito de dono (6.3); responder 404 não confirma que a linha existe |
+| **Baixar funciona sem a chave** | O download é só bytes. Só o *Decifrar* depende da chave, e é ele que o 10.5 desliga |
+
+### Revisão 10 — Épico 9 (tradutor) e a deduplicação do 6.5
+
+| Mudança | Motivo |
+|---|---|
+| **Épico 9 concluído** | O tradutor aceita texto colado, grava no histórico de quem recebe e dá nome a cada falha |
+| **6.5 antecipado** | O critério do 9.4 é "importar duas vezes não duplica", e quem garante isso é o 6.5 |
+| **`blob_sha256` no `Message` (migration 0004)** | Deduplicar por dono sem varrer e hashear todos os blobs a cada requisição |
+| **POST idempotente, além do HEAD** | O HEAD economiza o upload; o critério só fica garantido se o servidor recusar a segunda cópia |
+
+### Revisão 9 — Épico 8 (compartilhamento)
+
+| Mudança | Motivo |
+|---|---|
+| **Seção de envio no compositor** | Baixar de novo, copiar como texto, abrir no e-mail e compartilhamento nativo, num lugar só |
+| **`share.js` separado da tela** | O que dá para testar (mailto, bloco colável, decisão do botão nativo) ficou fora do DOM, com 17 testes |
+| **Aviso do 8.5 na tela** | O arquivo pode ir por qualquer canal, mas a confirmação de identidade e senhas não podem ir pelo mesmo |
 
 ### Revisão 8 — árvore binária de busca na tela
 
