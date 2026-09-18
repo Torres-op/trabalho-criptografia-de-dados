@@ -1372,33 +1372,45 @@ Limpar o IndexedDB e validar cada camada de **D11** isoladamente:
 
 ## Épico 15 — Documentação
 
-### 15.1 README principal
+### 15.1 README principal ✅
 - Visão geral do projeto e do pipeline; setup resumido, apontando para o guia completo do 15.6.
 - Aviso destacado sobre contexto seguro (D10): acessar por `localhost`/`127.0.0.1` em desenvolvimento, HTTPS em produção — **nunca pelo IP da rede**.
 - Diagrama do pipeline completo (envio e recebimento).
 - **Critério de aceite**: alguém de fora roda o app do zero seguindo só o README.
 
+> ✅ **O pipeline virou desenho.** O README traz o percurso de ida (texto → Huffman → AES-GCM → arquivo ou bloco armored) e o de volta, mais o diagrama da derivação da chave, que é o ponto onde a pergunta "mas a chave não trafega?" costuma aparecer. O aviso de que faltava a CSP saiu: ficou obsoleto no Épico 13.
+
 ### 15.2 `formato.md` ✅
 - Ver 5.6 — entregue em [`formato.md`](formato.md).
 
-### 15.3 `SEGURANCA.md` — modelo de ameaça
+### 15.3 `SEGURANCA.md` — modelo de ameaça ✅
 - O que o sistema protege: leitura por terceiros no canal (WhatsApp, e-mail, pen-drive perdido); adulteração da mensagem; leitura por quem tiver acesso ao banco do servidor.
 - O que **não** protege: servidor malicioso que troca chaves públicas (mitigado, não eliminado, pela verificação de fingerprint — 11.1); dispositivo comprometido; ausência de forward secrecy (17.1); metadados (quem falou com quem e quando ficam visíveis no servidor).
 - **Limite de recuperação:** documentar explicitamente que, se os **dois** usuários perderem as chaves ao mesmo tempo e não houver backup, o histórico é irrecuperável — nem os administradores conseguem restaurá-lo. Isso é inerente à criptografia fim-a-fim e é a contrapartida de o servidor não conseguir ler nada.
 - Ser honesto sobre os limites vale mais do que afirmar segurança absoluta.
 - **Critério de aceite**: cada limitação listada tem a mitigação correspondente ou a justificativa de por que foi aceita.
 
-### 15.4 Guia de primeiro uso para os dois usuários
+> ✅ **Entregue em [`SEGURANCA.md`](SEGURANCA.md).** Cada limitação da lista aparece com a mitigação ao lado ou com a justificativa de por que foi aceita — servidor malicioso na primeira troca (mitigado pela comparação dos códigos, não eliminado), dispositivo comprometido, ausência de forward secrecy, metadados, o canal de verificação e a senha fraca de backup.
+>
+> O limite de recuperação está escrito sem rodeio, inclusive no resumo do topo: perdidas as duas chaves e sem backup, o histórico não volta — nem para os administradores.
+
+### 15.4 Guia de primeiro uso para os dois usuários ✅
 - Passo a passo do onboarding (11.5), incluindo como comparar os fingerprints.
 - **Critério de aceite**: os dois usuários reais seguem o guia sem ajuda extra.
 
-### 15.5 Relatório técnico (entrega acadêmica)
+> ✅ **Entregue em [`primeiro-uso.md`](primeiro-uso.md).** Cinco passos, sem jargão: entrar, criar a senha de backup, guardar o `.treehashkey`, comparar os códigos por telefone e enviar a primeira mensagem. A comparação tem o roteiro literal do que cada um lê em voz alta, e o que fazer se os códigos não baterem. No fim, um "o que fazer quando..." com os quatro problemas que aparecem na prática.
+
+### 15.5 Relatório técnico (entrega acadêmica) 🟡
 - Explicar por que Huffman é **compressão, não criptografia** — a segurança vem inteiramente do AES-GCM. Este é o ponto mais comumente confundido em projetos deste tipo.
 - Justificar cada decisão de D1 a D12.
 - Incluir a comparação de compressão do 17.2.
 - **Critério de aceite**: o relatório responde "por que assim e não de outro jeito" para cada decisão travada.
 
-### 15.6 Guia de setup e convenções da equipe
+> 🟡 **Entregue em [`relatorio-tecnico.md`](relatorio-tecnico.md), menos a tabela do 17.2.** O documento abre pelo ponto que mais se confunde — Huffman é transformação fixa e sem chave, a tabela está publicada de propósito, a proteção é toda do AES-GCM — e depois justifica D1 a D13 dizendo, em cada uma, qual era a alternativa e por que ela foi descartada. Traz também os números medidos (4,6306 bits por byte, 0,80% acima da entropia, equilíbrio em 96 caracteres) e uma lista do que ficou de fora.
+>
+> **Falta a comparação com gzip (17.2)**, adiada por decisão da equipe. É o contraponto honesto ao Huffman e cabe na apresentação; enquanto não existir, o relatório registra a ausência em vez de omiti-la.
+
+### 15.6 Guia de setup e convenções da equipe ✅
 > O passo a passo de infraestrutura já está em [`infraestrutura.md`](infraestrutura.md) (✅ entregue). Este item cobre o que é específico do domínio do projeto e não cabe lá.
 
 - Apontar para o `infraestrutura.md` como ponto de partida: `cp .env.example .env` → `docker compose build` → bootstrap → `migrate` → `up`.
@@ -1406,6 +1418,8 @@ Limpar o IndexedDB e validar cada camada de **D11** isoladamente:
 - Regra da tabela de frequência: `tools/generate-frequency-table.js` roda **uma vez**, o resultado é commitado, e ninguém regenera sem combinar com a equipe. Corpus diferentes produzem tabelas diferentes, e o sintoma é "texto decifrado vira lixo" — que parece bug de criptografia e não é.
 - Como usar os vetores de teste do 14.9.
 - **Critério de aceite**: um dev novo tem o ambiente rodando e o fluxo dos 2 usuários testado seguindo apenas este guia.
+
+> ✅ **Entregue em [`guia-da-equipe.md`](guia-da-equipe.md).** Começa apontando para o [`infraestrutura.md`](infraestrutura.md) e cobre o que é do domínio do projeto: a convenção das duas origens (com o 409 explicado, que é o sintoma de entrar pela origem errada), a regra de que a tabela de frequência roda uma vez só, o uso dos vetores do 14.9 — com o aviso de não regenerá-los para calar um teste — e o que rodar antes de abrir PR.
 
 ---
 
@@ -1470,6 +1484,17 @@ docker compose --profile tunnel up tunnel
 ---
 
 ## Changelog
+
+### Revisão 17 — Épico 15 (documentação)
+
+| Mudança | Motivo |
+|---|---|
+| **[`SEGURANCA.md`](SEGURANCA.md)** | O modelo de ameaça não existia como documento: cada limite estava espalhado pelas notas dos épicos |
+| **[`relatorio-tecnico.md`](relatorio-tecnico.md)** | A entrega acadêmica precisa responder "por que assim e não de outro jeito" para D1–D13, e separar compressão de criptografia |
+| **[`primeiro-uso.md`](primeiro-uso.md)** | Os dois usuários finais não têm por onde começar; a comparação dos códigos depende deles e não estava explicada em lugar nenhum |
+| **[`guia-da-equipe.md`](guia-da-equipe.md)** | A convenção das duas origens, a regra da tabela de frequência e o uso dos vetores só existiam na cabeça de quem implementou |
+| **Diagrama do pipeline no README** | O 15.1 pedia envio e recebimento desenhados; o README descrevia o fluxo só em prosa |
+| **Aviso da CSP removido do README** | Ficou obsoleto quando o Épico 13 entregou a CSP |
 
 ### Revisão 16 — correções de revisão de código
 

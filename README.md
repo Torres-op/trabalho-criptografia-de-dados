@@ -24,10 +24,61 @@ Aplicativo de mensagens criptografadas entre **dois usuários fixos**. A mensage
 | 12 — interface e UX | ✅ |
 | 13 — segurança e hardening | ✅ |
 | 14 — testes e qualidade | parcial: 14.6 e 14.8 são manuais |
+| 15 — documentação | parcial: falta a comparação com gzip (17.2) |
 
 A compressão e a cifragem são **reais**. O fluxo completo funciona: cada usuário gera o próprio par de chaves no primeiro acesso, o servidor distribui as chaves públicas, e o arquivo gerado por um só abre no navegador do outro.
 
-⚠️ **A verificação de identidade existe, mas depende de você.** A tela **Identidade** mostra o código de segurança das duas chaves; enquanto você não comparar os códigos com a outra pessoa por um canal fora do app, um servidor comprometido ainda pode ter entregado uma chave falsa no primeiro acesso. Falta também a CSP do Épico 13.
+⚠️ **A verificação de identidade existe, mas depende de você.** A tela **Identidade** mostra o código de segurança das duas chaves; enquanto você não comparar os códigos com a outra pessoa por um canal fora do app, um servidor comprometido ainda pode ter entregado uma chave falsa no primeiro acesso. O modelo de ameaça completo está em [`docs/SEGURANCA.md`](docs/SEGURANCA.md).
+
+---
+
+## Como a mensagem viaja
+
+```
+ENVIO — no navegador de quem escreve
+
+    texto digitado
+        │
+        ▼  Huffman          comprime (ou passa direto, quando comprimir aumentaria)
+        │
+        ▼  AES-256-GCM      cifra e autentica
+        │
+        ▼
+    TRHS │ versão │ flags │ remetente │ data │ IV │ conteúdo cifrado + tag
+        │
+        ├──► arquivo .treehash
+        └──► bloco -----BEGIN TREEHASH-----
+
+             WhatsApp · e-mail · pen-drive · o que for mais prático
+
+
+RECEBIMENTO — no navegador de quem lê
+
+    arquivo aberto ou bloco colado
+        │
+        ▼  AES-256-GCM      verifica a autenticação e decifra
+        │                   (se alguém mexeu no arquivo, falha aqui)
+        ▼  Huffman          descomprime
+        │
+        ▼
+    texto original
+```
+
+A chave que cifra nunca trafega — cada lado a calcula sozinho:
+
+```
+    minha chave privada  +  chave pública da outra pessoa
+              └───────── ECDH P-256 ─────────┘
+                            │
+                            ▼  HKDF-SHA256    salt = SHA-256 dos dois usernames
+                            │                 info = treehash/v1/aes-gcm-256
+                            ▼
+                    AES-256-GCM — idêntica nos dois navegadores
+```
+
+O servidor faz duas coisas, e só: **distribui as chaves públicas** e **guarda os blobs cifrados** do histórico. Texto puro e chave privada nunca saem do navegador.
+
+A compressão é separada da segurança: **Huffman comprime, AES-GCM protege**. A tabela de frequência está no repositório e é pública de propósito — ela não é segredo nenhum. O porquê está em [`docs/relatorio-tecnico.md`](docs/relatorio-tecnico.md).
 
 ---
 
@@ -53,7 +104,7 @@ Os dois usuários do sistema são os definidos em `SEED_USER_A`/`SEED_PASS_A` e 
 
 **Acesse sempre por `localhost` ou `127.0.0.1`** — nunca pelo IP da rede. A Web Crypto API só funciona em contexto seguro, e fora dele o app quebra inteiro.
 
-Guia completo, comandos do dia a dia e troubleshooting em **[`docs/infraestrutura.md`](docs/infraestrutura.md)**.
+Guia completo, comandos do dia a dia e troubleshooting em **[`docs/infraestrutura.md`](docs/infraestrutura.md)**. Se você acabou de entrar no projeto, comece pelo **[`docs/guia-da-equipe.md`](docs/guia-da-equipe.md)**; se você é um dos dois usuários do app, o seu guia é o **[`docs/primeiro-uso.md`](docs/primeiro-uso.md)**.
 
 ## Testes
 
@@ -128,6 +179,10 @@ docs/                      backlog, infraestrutura e convenções
 | [`docs/infraestrutura.md`](docs/infraestrutura.md) | Ambiente Docker, comandos, variáveis, troubleshooting |
 | [`docs/convencoes.md`](docs/convencoes.md) | Convenções de código |
 | [`docs/roteiro-de-testes.md`](docs/roteiro-de-testes.md) | Os testes que não dá para automatizar: duas máquinas, adulteração e perda de chave |
+| [`docs/SEGURANCA.md`](docs/SEGURANCA.md) | O que o sistema protege, o que **não** protege, e o limite da recuperação |
+| [`docs/relatorio-tecnico.md`](docs/relatorio-tecnico.md) | Por que cada decisão foi essa e não outra; números medidos |
+| [`docs/primeiro-uso.md`](docs/primeiro-uso.md) | Guia dos dois usuários finais: backup, comparação dos códigos, primeiro envio |
+| [`docs/guia-da-equipe.md`](docs/guia-da-equipe.md) | Para o dev novo: duas origens, tabela de frequência, vetores e o que roda antes do PR |
 
 **Antes de escrever código, leia as decisões D1–D13** no início do backlog. Elas fixam o formato binário, os parâmetros de derivação de chave e o alfabeto do Huffman — coisas que precisam ser idênticas nos dois lados da comunicação. Divergir delas faz o app falhar silenciosamente.
 
