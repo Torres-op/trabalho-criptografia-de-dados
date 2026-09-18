@@ -39,6 +39,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "core.middleware.ContentSecurityPolicyMiddleware",
 ]
 
 ROOT_URLCONF = "core.urls"
@@ -100,3 +101,34 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=31536000, cast=int)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+LOGIN_URL = "messenger:login"
+LOGIN_REDIRECT_URL = "messenger:compose"
+LOGOUT_REDIRECT_URL = "messenger:login"
+
+TEST_RUNNER = "core.test_runner.TestRunner"
+
+DATA_UPLOAD_MAX_MEMORY_SIZE = 3 * 1024 * 1024
+
+LOGIN_MAX_ATTEMPTS = config("LOGIN_MAX_ATTEMPTS", default=5, cast=int)
+LOGIN_ATTEMPT_WINDOW = config("LOGIN_ATTEMPT_WINDOW", default=15 * 60, cast=int)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {"format": "{levelname} {asctime} {name} {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+    },
+    "root": {"handlers": ["console"], "level": config("LOG_LEVEL", default="INFO")},
+    "loggers": {
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+        "django.db.backends": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "django.security": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+    },
+}

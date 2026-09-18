@@ -6,6 +6,7 @@ import {
   requestPersistentStorage,
   requireSecureContext,
 } from "./environment.js";
+import { MAX_FILE_SIZE } from "./format.js";
 import { copyText } from "./share.js";
 import { showBadge } from "./badge.js";
 import * as ui from "./ui.js";
@@ -119,6 +120,16 @@ function stageTitle(error) {
 }
 
 async function readFile(file) {
+  if (file.size > MAX_FILE_SIZE) {
+    ui.showStatus(
+      status,
+      "error",
+      "Arquivo grande demais",
+      `O limite é ${ui.formatBytes(MAX_FILE_SIZE)} e este arquivo tem ${ui.formatBytes(file.size)}.`
+    );
+    return;
+  }
+
   process(new Uint8Array(await file.arrayBuffer()), file.name);
 }
 
@@ -135,6 +146,16 @@ function readPasted() {
     bytes = fromArmor(pasted.value);
   } catch (error) {
     ui.showStatus(status, "error", stageTitle(error), error.message);
+    return;
+  }
+
+  if (bytes.length > MAX_FILE_SIZE) {
+    ui.showStatus(
+      status,
+      "error",
+      "Bloco grande demais",
+      `O limite é ${ui.formatBytes(MAX_FILE_SIZE)}.`
+    );
     return;
   }
 

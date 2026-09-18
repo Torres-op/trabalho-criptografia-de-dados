@@ -34,6 +34,7 @@ const STAGE_TITLES = Object.freeze({
   FormatError: "Falha ao montar o arquivo",
 });
 
+const MAX_CHARACTERS = 100000;
 const BUILD_MS = 5000;
 const MIN_STEP_MS = 90;
 const MAX_STEP_MS = 420;
@@ -116,8 +117,13 @@ async function openKeys() {
 
 function updateCounter() {
   const n = [...textArea.value].length;
-  counter.textContent = `${n.toLocaleString("pt-BR")} caractere${n === 1 ? "" : "s"}`;
-  button.disabled = n === 0 || !session?.ready;
+  const tooLong = n > MAX_CHARACTERS;
+
+  counter.className = tooLong ? "counter counter--over" : "counter";
+  counter.textContent = tooLong
+    ? `${n.toLocaleString("pt-BR")} caracteres — o limite é ${MAX_CHARACTERS.toLocaleString("pt-BR")}`
+    : `${n.toLocaleString("pt-BR")} caractere${n === 1 ? "" : "s"}`;
+  button.disabled = n === 0 || tooLong || session?.ready !== true;
 }
 
 async function generate() {
