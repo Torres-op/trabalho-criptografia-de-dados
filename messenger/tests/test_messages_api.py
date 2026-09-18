@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import datetime, timezone
 
@@ -177,3 +178,60 @@ class ListMessagesTests(TestCase):
 
     def test_refuses_other_methods(self):
         self.assertEqual(self.client.delete(MESSAGES_URL).status_code, 405)
+
+
+class DeduplicationTests(TestCase):
+    def setUp(self):
+        self.diretor, self.marcio = make_pair()
+        self.client.force_login(self.diretor)
+        self.blob = make_blob(sender_id=0)
+        self.digest = hashlib.sha256(self.blob).hexdigest()
+
+    def save(self, direction=Message.Direction.SENT):
+        return self.client.post(
+            MESSAGES_URL,
+            json.dumps({"blob": encode_blob(self.blob), "direction": direction}),
+            content_type="application/json",
+        )
+
+    def head(self, digest, client=None):
+        return (client or self.client).head(f"{MESSAGES_URL}?hash={digest}")
+
+    def test_stores_the_hash_of_the_blob(self):
+        self.save()
+        self.assertEqual(Message.objects.get().blob_sha256, self.digest)
+
+    def test_saving_the_same_file_twice_keeps_one_row(self):
+        first = self.save()
+        second = self.save()
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["id"], first.json()["id"])
+        self.assertEqual(Message.objects.count(), 1)
+
+    def test_says_whether_the_message_is_already_saved(self):
+        self.assertEqual(self.head(self.digest).status_code, 404)
+        self.save()
+        self.assertEqual(self.head(self.digest).status_code, 200)
+
+    def test_does_not_answer_for_the_copy_of_the_other_user(self):
+        self.save()
+        self.client.force_login(self.marcio)
+
+        self.assertEqual(self.head(self.digest).status_code, 404)
+
+    def test_both_users_keep_their_own_copy_of_the_same_file(self):
+        self.save()
+        self.client.force_login(self.marcio)
+        response = self.save(direction=Message.Direction.RECEIVED)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Message.objects.count(), 2)
+
+    def test_rejects_a_hash_that_is_not_a_hash(self):
+        self.assertEqual(self.head("nao-e-um-hash").status_code, 400)
+        self.assertEqual(self.client.head(MESSAGES_URL).status_code, 400)
+
+    def test_requires_login(self):
+        self.assertEqual(self.head(self.digest, client=Client()).status_code, 401)
