@@ -46,3 +46,12 @@ export async function hasPersistentStorage() {
     return false;
   }
 }
+
+export const PERSISTENCE_NOTICE =
+  "O navegador não garantiu armazenamento permanente para este site e você ainda não guardou " +
+  "um backup da sua chave. Se ele limpar os dados do site, a chave some junto e o histórico " +
+  "fica ilegível. Guarde o backup na tela de Identidade.";
+
+export function storageNotices({ persisted = false, backup = false } = {}) {
+  return persisted || backup ? [] : [PERSISTENCE_NOTICE];
+}

@@ -4,9 +4,10 @@ import {
   EnvironmentError,
   requestPersistentStorage,
   requireSecureContext,
+  storageNotices,
 } from "./environment.js";
 import { fileName } from "./format.js";
-import { showBadge } from "./badge.js";
+import { hasKeyBackup, showBadge } from "./badge.js";
 import * as ui from "./ui.js";
 
 const DIRECTION_LABELS = Object.freeze({ sent: "Enviada", received: "Recebida" });
@@ -31,6 +32,7 @@ let context = null;
 let session = null;
 let remote = null;
 let page = 1;
+let request = 0;
 
 function start() {
   try {
@@ -50,15 +52,18 @@ function start() {
 }
 
 async function openKeys() {
-  const messages = await ui.reportEnvironment(notices, {
+  const { messages, persisted } = await ui.reportEnvironment(notices, {
     isFakeImplementation,
     requestPersistentStorage,
   });
+
+  let backup = false;
 
   try {
     context = readSessionData();
     remote = createRemote(context);
     session = await openSession(context, remote);
+    backup = await hasKeyBackup(remote);
     messages.push(...session.notices);
     if (!session.ready) {
       messages.push(NO_KEY_NOTICE);
@@ -67,8 +72,9 @@ async function openKeys() {
     messages.push(`Não foi possível preparar suas chaves: ${error.message}`);
   }
 
+  messages.push(...storageNotices({ persisted, backup }));
   ui.showNotices(notices, messages);
-  showBadge(document.querySelector("#badge"), { context, session, remote });
+  showBadge(document.querySelector("#badge"), { context, session, remote, backup });
   load(1);
 }
 
@@ -81,12 +87,21 @@ async function load(target) {
     return;
   }
 
+  const attempt = request + 1;
+  request = attempt;
   ui.showLoading(status, "Carregando o histórico...");
+
   try {
     const answer = await remote.listMessages({ ...filters(), page: target });
+    if (attempt !== request) {
+      return;
+    }
     ui.clearStatus(status);
     render(answer);
   } catch (error) {
+    if (attempt !== request) {
+      return;
+    }
     list.replaceChildren();
     pager.hidden = true;
     ui.showStatus(status, "error", "Não foi possível carregar o histórico", error.message);

@@ -7,13 +7,14 @@ from datetime import date
 from functools import wraps
 
 from django.core.paginator import Paginator
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
 from django.views.decorators.http import require_http_methods
 
 from .jwk import InvalidPublicKey, canonical_public_jwk, fingerprint, load_public_jwk
+from .key_backup_format import InvalidBackup, validate_backup
 from .message_format import InvalidMessage, parse_header
 from .models import KeyBackup, Message, Profile
 from .participants import NotAParticipant, get_other_user, participants, sender_id_for
@@ -25,7 +26,6 @@ KEY_CONFLICT_MESSAGE = (
 )
 
 HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
-BACKUP_MAX_SIZE = 8192
 PAGE_SIZE = 20
 
 
@@ -199,6 +199,10 @@ def list_messages(request):
     )
 
 
+def owned_copy(user, digest, direction):
+    return Message.objects.owned_by(user).filter(blob_sha256=digest, direction=direction).first()
+
+
 @sensitive_variables("payload", "blob", "digest")
 def save_message(request):
     payload = read_json_object(request)
@@ -230,21 +234,24 @@ def save_message(request):
         )
 
     digest = hashlib.sha256(blob).hexdigest()
-    saved = (
-        Message.objects.owned_by(request.user)
-        .filter(blob_sha256=digest, direction=direction)
-        .first()
-    )
+    saved = owned_copy(request.user, digest, direction)
     if saved is not None:
         return JsonResponse(message_payload(saved), status=200)
 
-    message = Message.objects.create(
-        sender=sender,
-        recipient=recipient,
-        blob=blob,
-        created_at=header.created_at,
-        direction=direction,
-    )
+    try:
+        with transaction.atomic():
+            message = Message.objects.create(
+                sender=sender,
+                recipient=recipient,
+                blob=blob,
+                created_at=header.created_at,
+                direction=direction,
+            )
+    except IntegrityError:
+        saved = owned_copy(request.user, digest, direction)
+        if saved is None:
+            raise
+        return JsonResponse(message_payload(saved), status=200)
 
     return JsonResponse(message_payload(message), status=201)
 
@@ -314,12 +321,9 @@ def save_key_backup(request):
         return error_response(400, "invalid_json", "O corpo da requisição precisa ser um objeto JSON.")
 
     try:
-        blob = decode_blob(payload.get("blob"))
-    except InvalidMessage as error:
+        blob = validate_backup(decode_blob(payload.get("blob")))
+    except (InvalidMessage, InvalidBackup) as error:
         return error_response(400, "invalid_backup", str(error))
-
-    if len(blob) > BACKUP_MAX_SIZE:
-        return error_response(400, "invalid_backup", "O backup da chave é grande demais.")
 
     backup = KeyBackup.objects.create(user=request.user, blob=blob)
     return JsonResponse(backup_payload(backup), status=201)

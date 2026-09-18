@@ -3,6 +3,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
+from django.db import IntegrityError, transaction
 from django.test import Client, TestCase
 from django.urls import reverse
 
@@ -98,12 +99,14 @@ class ListMessagesTests(TestCase):
     def setUp(self):
         self.diretor, self.marcio = make_pair()
         self.client.force_login(self.diretor)
+        self.made = 0
 
     def create_message(self, sender, recipient, direction, sender_id=0):
+        self.made += 1
         return Message.objects.create(
             sender=sender,
             recipient=recipient,
-            blob=make_blob(sender_id=sender_id),
+            blob=make_blob(sender_id=sender_id, body_size=self.made),
             created_at=datetime(2026, 9, 17, 12, tzinfo=timezone.utc),
             direction=direction,
         )
@@ -210,6 +213,19 @@ class DeduplicationTests(TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertEqual(second.json()["id"], first.json()["id"])
         self.assertEqual(Message.objects.count(), 1)
+
+    def test_the_database_refuses_a_second_copy(self):
+        self.save()
+        message = Message.objects.get()
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Message.objects.create(
+                sender=message.sender,
+                recipient=message.recipient,
+                blob=self.blob,
+                created_at=message.created_at,
+                direction=message.direction,
+            )
 
     def test_says_whether_the_message_is_already_saved(self):
         self.assertEqual(self.head(self.digest).status_code, 404)

@@ -72,7 +72,7 @@ export function renderBadge(target, signals) {
   target.hidden = false;
 }
 
-async function hasBackup(remote) {
+export async function hasKeyBackup(remote) {
   try {
     await remote.fetchKeyBackup();
     return true;
@@ -81,12 +81,13 @@ async function hasBackup(remote) {
   }
 }
 
-export async function showBadge(target, { context, session, remote }) {
+export async function showBadge(target, { context, session, remote, backup }) {
   if (target === null || context === null) {
     return;
   }
 
-  const [backup, persisted] = await Promise.all([hasBackup(remote), hasPersistentStorage()]);
+  const stored = backup === undefined ? await hasKeyBackup(remote) : backup;
+  const persisted = await hasPersistentStorage();
 
   renderBadge(
     target,
@@ -95,7 +96,7 @@ export async function showBadge(target, { context, session, remote }) {
       localKey: session !== null && session.keyConflict !== true,
       peerKey: Boolean(session?.ready),
       verified: Boolean(session?.peerVerified),
-      backup,
+      backup: stored,
       persisted,
     })
   );

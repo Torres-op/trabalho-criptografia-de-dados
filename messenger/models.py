@@ -69,6 +69,12 @@ class Message(models.Model):
         indexes = [
             models.Index(fields=["recipient", "-received_at"], name="message_recipient_idx"),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["sender", "recipient", "direction", "blob_sha256"],
+                name="message_unique_copy",
+            ),
+        ]
 
     def save(self, *args, **kwargs):
         self.blob_sha256 = hashlib.sha256(bytes(self.blob)).hexdigest()

@@ -4,6 +4,7 @@ import {
   EnvironmentError,
   requestPersistentStorage,
   requireSecureContext,
+  storageNotices,
 } from "./environment.js";
 import {
   buildCharacterTree,
@@ -24,7 +25,7 @@ import {
   shareFile,
 } from "./share.js";
 import { createTreeView, renderValueTable } from "./tree-view.js";
-import { showBadge } from "./badge.js";
+import { hasKeyBackup, showBadge } from "./badge.js";
 import * as ui from "./ui.js";
 
 const STAGE_TITLES = Object.freeze({
@@ -88,15 +89,18 @@ function start() {
 }
 
 async function openKeys() {
-  const messages = await ui.reportEnvironment(notices, {
+  const { messages, persisted } = await ui.reportEnvironment(notices, {
     isFakeImplementation,
     requestPersistentStorage,
   });
+
+  let backup = false;
 
   try {
     context = readSessionData();
     remote = createRemote(context);
     session = await openSession(context, remote);
+    backup = await hasKeyBackup(remote);
     messages.push(...session.notices);
     if (!session.ready) {
       messages.push(session.reason);
@@ -110,8 +114,9 @@ async function openKeys() {
     messages.push(`Não foi possível preparar suas chaves: ${error.message}`);
   }
 
+  messages.push(...storageNotices({ persisted, backup }));
   ui.showNotices(notices, messages);
-  showBadge(document.querySelector("#badge"), { context, session, remote });
+  showBadge(document.querySelector("#badge"), { context, session, remote, backup });
   updateCounter();
 }
 

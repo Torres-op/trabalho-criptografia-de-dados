@@ -24,6 +24,15 @@ def attempts_key(request):
     return f"{CACHE_PREFIX}:{client_address(request)}"
 
 
+def register_attempt(key):
+    cache.add(key, 0, settings.LOGIN_ATTEMPT_WINDOW)
+    try:
+        return cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, settings.LOGIN_ATTEMPT_WINDOW)
+        return 1
+
+
 def throttle_login(view):
     @wraps(view)
     def wrapper(request, *args, **kwargs):
@@ -44,7 +53,7 @@ def throttle_login(view):
         if response.status_code == 302:
             cache.delete(key)
         else:
-            cache.set(key, attempts + 1, settings.LOGIN_ATTEMPT_WINDOW)
+            register_attempt(key)
         return response
 
     return wrapper

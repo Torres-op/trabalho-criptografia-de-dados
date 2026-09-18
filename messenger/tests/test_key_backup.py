@@ -1,13 +1,16 @@
 import base64
 import json
 
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 
 from messenger.jwk import canonical_public_jwk, fingerprint
+from messenger.key_backup_format import MAGIC as BACKUP_MAGIC
+from messenger.key_backup_format import VERSION as BACKUP_VERSION
+from messenger.key_backup_format import InvalidBackup, validate_backup
 from messenger.models import KeyBackup
 
-from .factories import JWK_B, make_backup, make_pair, make_superuser
+from .factories import JWK_B, make_backup, make_backup_blob, make_pair, make_superuser
 
 BACKUP_URL = reverse("messenger:api-key-backup")
 FINGERPRINT_URL = reverse("messenger:api-fingerprint")
@@ -18,7 +21,8 @@ class SaveBackupTests(TestCase):
         self.diretor, self.marcio = make_pair()
         self.client.force_login(self.diretor)
 
-    def save(self, blob=b"chave-cifrada", client=None):
+    def save(self, blob=None, client=None):
+        blob = make_backup_blob() if blob is None else blob
         return (client or self.client).post(
             BACKUP_URL,
             json.dumps({"blob": base64.b64encode(blob).decode()}),
@@ -26,17 +30,18 @@ class SaveBackupTests(TestCase):
         )
 
     def test_stores_the_encrypted_blob(self):
-        response = self.save()
+        blob = make_backup_blob()
+        response = self.save(blob)
         backup = KeyBackup.objects.get()
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(backup.user, self.diretor)
-        self.assertEqual(bytes(backup.blob), b"chave-cifrada")
-        self.assertEqual(response.json()["size"], len(b"chave-cifrada"))
+        self.assertEqual(bytes(backup.blob), blob)
+        self.assertEqual(response.json()["size"], len(blob))
 
     def test_keeps_every_version(self):
-        self.save(b"primeira")
-        self.save(b"segunda")
+        self.save(make_backup_blob(filler=b"a"))
+        self.save(make_backup_blob(filler=b"b"))
 
         self.assertEqual(KeyBackup.objects.count(), 2)
 
@@ -49,10 +54,29 @@ class SaveBackupTests(TestCase):
         self.assertEqual(response.json()["code"], "invalid_backup")
 
     def test_rejects_a_backup_that_is_too_big(self):
-        response = self.save(b"x" * 8193)
+        response = self.save(make_backup_blob(extra=9000))
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["code"], "invalid_backup")
+
+    def test_rejects_bytes_that_are_not_a_backup(self):
+        response = self.save(b"isto nao e um backup, so bytes soltos aqui dentro" * 3)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "invalid_backup")
+        self.assertFalse(KeyBackup.objects.exists())
+
+    def test_rejects_a_backup_from_another_version(self):
+        response = self.save(make_backup_blob(version=9))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("versão 9", response.json()["error"])
+
+    def test_rejects_a_backup_that_is_too_short(self):
+        response = self.save(make_backup_blob()[:40])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("incompleto", response.json()["error"])
 
     def test_requires_login(self):
         self.assertEqual(self.save(client=Client()).status_code, 401)
@@ -137,3 +161,16 @@ class VerifyFingerprintTests(TestCase):
 
     def test_requires_login(self):
         self.assertEqual(self.verify("qualquer", client=Client()).status_code, 401)
+
+
+class BackupFormatTests(SimpleTestCase):
+    def test_uses_the_magic_fixed_for_the_browser(self):
+        self.assertEqual(BACKUP_MAGIC, b"TKEY")
+        self.assertEqual(BACKUP_VERSION, 1)
+
+    def test_accepts_a_well_formed_envelope(self):
+        self.assertEqual(validate_backup(make_backup_blob()), make_backup_blob())
+
+    def test_refuses_anything_that_is_not_bytes(self):
+        with self.assertRaises(InvalidBackup):
+            validate_backup("uma string")

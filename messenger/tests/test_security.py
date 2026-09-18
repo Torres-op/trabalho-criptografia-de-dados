@@ -5,6 +5,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from core.middleware import ADMIN_POLICY, APP_POLICY
+from messenger.throttle import CACHE_PREFIX
 
 from .factories import PASSWORD, make_backup, make_pair
 
@@ -72,6 +73,12 @@ class LoginThrottleTests(TestCase):
             self.attempt(address="203.0.113.7")
 
         self.assertEqual(self.attempt(address="198.51.100.2").status_code, 200)
+
+    def test_counts_every_attempt_without_overwriting(self):
+        self.attempt()
+        self.attempt()
+
+        self.assertEqual(cache.get(f"{CACHE_PREFIX}:203.0.113.7"), 2)
 
     def test_never_blocks_the_form_itself(self):
         for _ in range(4):

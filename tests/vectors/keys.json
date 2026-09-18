@@ -1,0 +1,29 @@
+{
+  "warning": "Chaves e arquivos de teste, publicados de propósito no repositório. Nunca use nada daqui em mensagem real.",
+  "keys": {
+    "diretor": {
+      "key_ops": [
+        "deriveKey",
+        "deriveBits"
+      ],
+      "ext": true,
+      "kty": "EC",
+      "x": "h7-U58xzswhZBBam06unfZgU7R6obpFHQruGXF6IBOw",
+      "y": "XYK4LC5p1bWsj7fD6vRzey84nNX4ByHC-djMD-SsYyM",
+      "crv": "P-256",
+      "d": "S0-CJB7AtZ1PVbLrWH2sHia0VY0OIehnUywjEJ0VTD0"
+    },
+    "marcio": {
+      "key_ops": [
+        "deriveKey",
+        "deriveBits"
+      ],
+      "ext": true,
+      "kty": "EC",
+      "x": "RtomYEdkiPQwlCtZVq_zsDQwFyUN47Lw6mq0_Ov6pUM",
+      "y": "BMdgLkziN9ooGXcmsr7I3ui5IVnfDK8PCnBMDjjuQzc",
+      "crv": "P-256",
+      "d": "W7ZTyTB3ELyW-CVoSic5YlPm6ghfncGqk7vnkv0xAFU"
+    }
+  }
+}
