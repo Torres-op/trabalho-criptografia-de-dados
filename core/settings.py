@@ -13,11 +13,19 @@ ALLOWED_HOSTS = config(
 )
 CSRF_TRUSTED_ORIGINS = []
 
+PLATFORM_HOST = config("RENDER_EXTERNAL_HOSTNAME", default="").strip()
+if PLATFORM_HOST and PLATFORM_HOST not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS += [PLATFORM_HOST]
+
 if DEBUG:
     ALLOWED_HOSTS += [".trycloudflare.com", ".ngrok-free.app"]
     CSRF_TRUSTED_ORIGINS += [
         "https://*.trycloudflare.com",
         "https://*.ngrok-free.app",
+    ]
+else:
+    CSRF_TRUSTED_ORIGINS += [
+        f"https://{host}" for host in ALLOWED_HOSTS if not host.startswith(".")
     ]
 
 INSTALLED_APPS = [
