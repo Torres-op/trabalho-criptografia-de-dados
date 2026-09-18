@@ -22,7 +22,9 @@ As duas limitações são conhecidas e têm contrapartida:
 
 ## 2. Primeiro deploy
 
-1. No painel do Render: **New > Blueprint**, apontando para o repositório. Ele lê o [`render.yaml`](../render.yaml) e cria o serviço web mais o banco.
+**Antes de abrir o painel:** o [`render.yaml`](../render.yaml) precisa estar na `main`, porque é dela que o serviço é construído (`branch: main`). Enquanto o arquivo existir só numa branch de trabalho, o blueprint não enxerga nada.
+
+1. No painel do Render: **New > Blueprint**, apontando para o repositório e para a branch `main`. Ele lê o [`render.yaml`](../render.yaml) e cria o serviço web mais o banco.
 2. Preencher as quatro variáveis marcadas como `sync: false` — elas ficam fora do repositório de propósito: `SEED_USER_A`, `SEED_PASS_A`, `SEED_USER_B`, `SEED_PASS_B`.
 3. Copiar a URL em **Settings > Deploy Hook** e guardar no GitHub como o segredo **`RENDER_DEPLOY_HOOK`** (*Settings > Secrets and variables > Actions*).
 4. Copiar a **External Database URL** do banco e guardar como o segredo **`DATABASE_URL_EXTERNAL`**, usado pelo backup.
@@ -30,6 +32,19 @@ As duas limitações são conhecidas e têm contrapartida:
 O resto o blueprint resolve sozinho: a `SECRET_KEY` é gerada pelo próprio Render, a `DATABASE_URL` vem do banco criado junto, e os `ALLOWED_HOSTS` recebem o host do serviço.
 
 Não é preciso rodar nada à mão depois. O [`deploy/start.sh`](../deploy/start.sh) roda `migrate` e `seed_users` — que é idempotente e nunca troca a senha de quem já existe — antes de subir o gunicorn. Isso importa porque o plano gratuito do Render não dá shell no container.
+
+> **As senhas dos dois usuários valem a partir do primeiro deploy.** Como o `seed_users` preserva a senha de quem já existe, mudar `SEED_PASS_A` depois não muda nada: a troca passa a ser pelo `/admin/`. Escolha as senhas de produção antes de aplicar o blueprint, e não reaproveite as do `.env` de desenvolvimento.
+
+### Comandos avulsos sem shell no container
+
+O plano gratuito não dá terminal no serviço, mas o banco aceita conexão externa. Qualquer comando pontual — criar o superusuário do `/admin/`, por exemplo — roda do seu próprio container apontando para o banco publicado:
+
+```bash
+docker compose run --rm -e DATABASE_URL="<External Database URL>" \
+  web python manage.py createsuperuser
+```
+
+O superusuário não participa das conversas: ele enxerga o Admin, e o histórico continua fechado para quem não é um dos dois participantes.
 
 ## 3. O pipeline
 
