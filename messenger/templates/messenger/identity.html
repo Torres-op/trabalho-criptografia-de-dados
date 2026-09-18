@@ -1,0 +1,66 @@
+{% extends "messenger/base.html" %}
+{% load static %}
+
+{% block title %}Identidade — Treehash{% endblock %}
+
+{% block content %}
+<h1>Identidade e chave</h1>
+<p class="subtitle">Aqui você confere com quem está falando de verdade e protege a sua chave contra perda.</p>
+
+<div id="status" class="status" hidden></div>
+
+<section class="card">
+  <h2>Códigos de segurança</h2>
+  <p class="meta">Compare os dois códigos com <strong id="peer-name">o outro usuário</strong> por um canal diferente deste app — pessoalmente, por telefone ou por vídeo. Se os dois aparelhos mostram o mesmo par, ninguém está no meio da conversa.</p>
+
+  <div class="fingerprint-pair">
+    <div class="fingerprint">
+      <h3>A sua chave</h3>
+      <code id="my-fingerprint">calculando...</code>
+    </div>
+    <div class="fingerprint">
+      <h3>A chave de <span class="peer-name">o outro usuário</span></h3>
+      <code id="peer-fingerprint">calculando...</code>
+    </div>
+  </div>
+
+  <p id="verified-state" class="meta"></p>
+  <button id="verify" type="button" disabled>Já conferi pessoalmente</button>
+</section>
+
+<section class="card">
+  <h2>Backup da sua chave</h2>
+  <p class="meta">A chave privada existe só neste navegador. Limpar os dados do site, trocar de máquina ou usar aba anônima apaga o acesso a todo o histórico — e não há como recuperar sem backup.</p>
+  <p id="backup-state" class="meta"></p>
+
+  <label for="password">Senha de backup</label>
+  <input id="password" type="password" autocomplete="new-password">
+  <label for="confirm">Repita a senha</label>
+  <input id="confirm" type="password" autocomplete="new-password">
+  <p class="meta">Ela é diferente da senha de login, nunca sai deste navegador e <strong>não pode ser recuperada</strong>: sem ela, o backup não abre.</p>
+
+  <button id="create-backup" type="button">Guardar backup e baixar o arquivo</button>
+</section>
+
+<section class="card">
+  <h2>Restaurar a chave</h2>
+  <p class="meta">Use isto num navegador novo, ou depois de limpar os dados do site.</p>
+
+  <div id="server-backup" hidden>
+    <p class="meta">Há um backup guardado no servidor, de <span id="server-date"></span>.</p>
+    <label for="server-password">Senha de backup</label>
+    <input id="server-password" type="password" autocomplete="current-password">
+    <button id="restore-server" type="button">Restaurar do servidor</button>
+  </div>
+
+  <label for="backup-file">Arquivo <code>.treehashkey</code></label>
+  <input id="backup-file" type="file" accept=".treehashkey">
+  <label for="file-password">Senha do arquivo</label>
+  <input id="file-password" type="password" autocomplete="current-password">
+  <button id="restore-file" type="button">Restaurar do arquivo</button>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{% static 'messenger/js/identity.js' %}"></script>
+{% endblock %}

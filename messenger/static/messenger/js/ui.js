@@ -10,11 +10,35 @@ export function blockPage(title, detail) {
   document.body.append(box);
 }
 
-export function showFakeWarning(target) {
-  target.hidden = false;
-  target.textContent =
-    "Criptografia e compressão ainda são implementações falsas do Épico 0. " +
-    "Nenhuma mensagem gerada aqui é segura.";
+export function showNotices(target, messages) {
+  target.innerHTML = "";
+  target.hidden = messages.length === 0;
+  if (messages.length === 0) {
+    return;
+  }
+  if (messages.length === 1) {
+    target.textContent = messages[0];
+    return;
+  }
+  const list = document.createElement("ul");
+  for (const message of messages) {
+    const item = document.createElement("li");
+    item.textContent = message;
+    list.append(item);
+  }
+  target.append(list);
+}
+
+export const FAKE_NOTICE =
+  "A compressão ou a cifragem ainda são implementações provisórias. " +
+  "Nenhuma mensagem gerada aqui é segura.";
+
+export async function reportEnvironment(target, checks) {
+  const messages = checks.isFakeImplementation() ? [FAKE_NOTICE] : [];
+  const persisted = await checks.requestPersistentStorage();
+
+  showNotices(target, messages);
+  return { messages, persisted };
 }
 
 export function showStatus(target, kind, title, detail = "") {
@@ -29,6 +53,18 @@ export function showStatus(target, kind, title, detail = "") {
     p.textContent = detail;
     target.append(p);
   }
+}
+
+export function showLoading(target, title, detail = "") {
+  showStatus(target, "loading", title, detail);
+}
+
+export function showEmpty(target, message) {
+  const list = target.tagName === "UL" || target.tagName === "OL";
+  const item = document.createElement(list ? "li" : "p");
+  item.className = "empty";
+  item.textContent = message;
+  target.replaceChildren(item);
 }
 
 export function clearStatus(target) {
@@ -56,6 +92,13 @@ export function formatPercent(ratio) {
   const delta = (ratio - 1) * 100;
   const sign = delta > 0 ? "+" : "";
   return `${sign}${delta.toFixed(1).replace(".", ",")}%`;
+}
+
+export function formatDecimal(value, decimals = 2) {
+  return value.toLocaleString("pt-BR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 }
 
 export function formatDate(ms) {

@@ -1,0 +1,37 @@
+{
+  "warning": "Chaves e arquivos de teste, publicados de propósito no repositório. Nunca use nada daqui em mensagem real.",
+  "usernames": {
+    "sender": "diretor",
+    "recipient": "marcio"
+  },
+  "vectors": [
+    {
+      "file": "short.treehash",
+      "text": "Chego às 19h.",
+      "senderId": 0,
+      "compressed": false,
+      "createdAt": 1789646400000,
+      "size": 57
+    },
+    {
+      "file": "paragraph.treehash",
+      "text": "O relatório trimestral ficou pronto e segue em anexo para conferência. Qualquer ajuste, me avise ainda hoje para revisarmos juntos amanhã de manhã.",
+      "senderId": 0,
+      "compressed": true,
+      "createdAt": 1789648200000,
+      "size": 133
+    },
+    {
+      "file": "emoji.treehash",
+      "text": "Combinado 👍🔐 até amanhã, às 9h em ponto — não esqueça o crachá.",
+      "senderId": 0,
+      "compressed": true,
+      "createdAt": 1789650000000,
+      "size": 113
+    }
+  ],
+  "tampered": {
+    "file": "tampered.treehash",
+    "from": "paragraph.treehash"
+  }
+}

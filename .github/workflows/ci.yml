@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  javascript:
+    name: Testes do navegador
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vitest na mesma imagem do compose
+        run: |
+          docker run --rm -v "$PWD":/app -w /app node:22-alpine \
+            sh -c "npm ci && npm test"
+
+  django:
+    name: Testes do servidor
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: treehash
+          POSTGRES_USER: treehash
+          POSTGRES_PASSWORD: treehash
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U treehash"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://treehash:treehash@localhost:5432/treehash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: O alvo prod precisa continuar sendo o último estágio
+        run: |
+          last=$(grep '^FROM' Dockerfile | tail -1)
+          if [ "$last" != "FROM base AS prod" ]; then
+            echo "O último estágio do Dockerfile é '$last'."
+            echo "As plataformas de deploy constroem o último estágio: ele precisa ser o prod."
+            exit 1
+          fi
+
+      - name: Constrói a imagem de produção
+        run: docker build --target prod -t treehash:ci .
+
+      - name: Gera uma SECRET_KEY de verdade para esta execução
+        run: echo "SECRET_KEY=$(openssl rand -base64 48)" >> "$GITHUB_ENV"
+
+      - name: Suíte do Django
+        run: |
+          docker run --rm --network host \
+            -e SECRET_KEY \
+            -e DATABASE_URL \
+            -e DJANGO_DEBUG=1 \
+            treehash:ci python manage.py test
+
+      - name: check --deploy com a configuração de produção
+        run: |
+          docker run --rm --network host \
+            -e SECRET_KEY \
+            -e DATABASE_URL \
+            -e DJANGO_DEBUG=0 \
+            -e ALLOWED_HOSTS=treehash.onrender.com \
+            treehash:ci python manage.py check --deploy --fail-level WARNING
+
+  deploy:
+    name: Publica no Render
+    needs: [javascript, django]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Dispara o deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "Falta o segredo RENDER_DEPLOY_HOOK no repositório."
+            echo "Pegue a URL em Render > serviço > Settings > Deploy Hook."
+            exit 1
+          fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+          echo "Deploy disparado. O resultado aparece no painel do Render."

@@ -3,26 +3,41 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Mensagens Criptografadas{% endblock %}</title>
+  <title>{% block title %}Treehash{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'messenger/css/app.css' %}">
 </head>
 <body>
   <header class="topbar">
-    <span class="brand">msgenc</span>
+    <span class="brand">Treehash</span>
+    {% if user.is_authenticated %}
     <nav>
       <a href="{% url 'messenger:compose' %}"
          class="{% if request.resolver_match.url_name == 'compose' %}active{% endif %}">Compor</a>
       <a href="{% url 'messenger:translator' %}"
          class="{% if request.resolver_match.url_name == 'translator' %}active{% endif %}">Tradutor</a>
+      <a href="{% url 'messenger:history' %}"
+         class="{% if request.resolver_match.url_name == 'history' %}active{% endif %}">Histórico</a>
+      <a href="{% url 'messenger:identity' %}"
+         class="{% if request.resolver_match.url_name == 'identity' %}active{% endif %}">Identidade</a>
     </nav>
+    <a id="badge" class="badge-status" href="{% url 'messenger:identity' %}" hidden></a>
+    <div class="account">
+      <span class="account__name">{{ user.get_username }}</span>
+      <form method="post" action="{% url 'messenger:logout' %}" class="logout-form">
+        {% csrf_token %}
+        <button type="submit" class="link-button">Sair</button>
+      </form>
+    </div>
+    {% endif %}
   </header>
 
-  <p id="fake-warning" class="warning" hidden></p>
+  <div id="notices" class="warning" hidden></div>
 
   <main>
     {% block content %}{% endblock %}
   </main>
 
+  {% if session %}{{ session|json_script:"session-data" }}{% endif %}
   {% block scripts %}{% endblock %}
 </body>
 </html>
