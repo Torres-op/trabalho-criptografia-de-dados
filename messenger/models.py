@@ -1,3 +1,5 @@
+import hashlib
+
 from django.conf import settings
 from django.db import models
 
@@ -54,6 +56,9 @@ class Message(models.Model):
     created_at = models.DateTimeField("escrita em")
     received_at = models.DateTimeField("recebida em", auto_now_add=True)
     direction = models.CharField("origem", max_length=10, choices=Direction.choices)
+    blob_sha256 = models.CharField(
+        "hash do conteúdo", max_length=64, default="", editable=False, db_index=True
+    )
 
     objects = MessageQuerySet.as_manager()
 
@@ -64,6 +69,10 @@ class Message(models.Model):
         indexes = [
             models.Index(fields=["recipient", "-received_at"], name="message_recipient_idx"),
         ]
+
+    def save(self, *args, **kwargs):
+        self.blob_sha256 = hashlib.sha256(bytes(self.blob)).hexdigest()
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.sender} → {self.recipient} ({self.created_at:%d/%m/%Y %H:%M})"
