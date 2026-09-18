@@ -1525,6 +1525,8 @@ docker compose --profile tunnel up tunnel
 | **Gunicorn com 1 worker e 4 threads** | Com vários processos, o contador do limite de login se multiplica e o limite de 5 tentativas vira 15 |
 | **[`backup.yml`](../.github/workflows/backup.yml) restaurando o dump que acabou de gerar** | Backup que nunca foi restaurado não é backup — e o banco gratuito do Render expira em 30 dias |
 | **[`deploy.md`](deploy.md)** | Primeiro deploy, segredos, armadilhas e restauração num lugar só |
+| **`branch: main` no blueprint** | Sem isso o Render constrói a branch padrão do repositório, que aqui é a `dev` — publicaria outra coisa enquanto o CI achava que publicava a `main` |
+| **Host da plataforma pelo `RENDER_EXTERNAL_HOSTNAME`** | O `fromService` apontando para o próprio serviço chegou vazio no primeiro deploy: `400 DisallowedHost` em toda requisição e health check reprovado |
 
 ### Revisão 17 — Épico 15 (documentação)
 

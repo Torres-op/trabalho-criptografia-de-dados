@@ -29,7 +29,11 @@ As duas limitações são conhecidas e têm contrapartida:
 3. Copiar a URL em **Settings > Deploy Hook** e guardar no GitHub como o segredo **`RENDER_DEPLOY_HOOK`** (*Settings > Secrets and variables > Actions*).
 4. Copiar a **External Database URL** do banco e guardar como o segredo **`DATABASE_URL_EXTERNAL`**, usado pelo backup.
 
-O resto o blueprint resolve sozinho: a `SECRET_KEY` é gerada pelo próprio Render, a `DATABASE_URL` vem do banco criado junto, e os `ALLOWED_HOSTS` recebem o host do serviço.
+O resto o blueprint resolve sozinho: a `SECRET_KEY` é gerada pelo próprio Render e a `DATABASE_URL` vem do banco criado junto.
+
+O host entra por dois caminhos, de propósito: o blueprint traz `ALLOWED_HOSTS` com o domínio do serviço, e o `settings.py` ainda acrescenta o `RENDER_EXTERNAL_HOSTNAME`, que a plataforma injeta em execução. Um cobre o outro — se o serviço subir com um domínio diferente do que está escrito no blueprint, o app continua respondendo.
+
+> **Não use `fromService` apontando para o próprio serviço** para preencher o `ALLOWED_HOSTS`. Era assim na primeira versão do blueprint: a variável chegou vazia, toda requisição virou `400 DisallowedHost` e o health check nunca passou — com a agravante de o erro aparecer no log do app, parecendo problema de Django.
 
 Não é preciso rodar nada à mão depois. O [`deploy/start.sh`](../deploy/start.sh) roda `migrate` e `seed_users` — que é idempotente e nunca troca a senha de quem já existe — antes de subir o gunicorn. Isso importa porque o plano gratuito do Render não dá shell no container.
 
@@ -145,7 +149,7 @@ O login do Django continua protegendo o acesso enquanto o túnel estiver de pé.
 | Sintoma | Causa |
 |---|---|
 | Redirecionamento infinito em produção | `SECURE_PROXY_SSL_HEADER` ausente, ou proxy sem `X-Forwarded-Proto` |
-| `DisallowedHost` | `ALLOWED_HOSTS` sem o domínio da plataforma — o blueprint resolve o host do Render, mas um domínio próprio precisa ser acrescentado |
+| `DisallowedHost` | O `ALLOWED_HOSTS` chegou vazio ou sem o domínio em uso. Confira a variável no painel; um domínio próprio precisa ser acrescentado à mão |
 | Primeira requisição do dia demora um minuto | Hibernação do plano gratuito |
 | O app some depois de um mês | O banco gratuito do Render expirou; crie outro e restaure o dump |
 | Deploy publicou sem passar pelos testes | Alguém ligou o `autoDeploy` no painel; o painel vence o blueprint |
