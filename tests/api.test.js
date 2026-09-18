@@ -3,8 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   createRemote,
+  fromBase64,
   readSessionData,
   requestJson,
+  requestStatus,
+  sha256Hex,
   toBase64,
 } from "../messenger/static/messenger/js/api.js";
 
@@ -158,5 +161,114 @@ describe("createRemote", () => {
     const [url, opcoes] = mock.mock.calls[0];
     expect(url).toBe("/api/messages/");
     expect(JSON.parse(opcoes.body)).toEqual({ blob: "AQID", direction: "sent" });
+  });
+});
+
+describe("sha256Hex", () => {
+  it("devolve o hash em hexadecimal minúsculo", async () => {
+    const bytes = new TextEncoder().encode("abc");
+
+    expect(await sha256Hex(bytes)).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+  });
+
+  it("dá o mesmo hash do servidor para bytes vazios", async () => {
+    expect(await sha256Hex(new Uint8Array(0))).toBe(
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
+  });
+});
+
+describe("requestStatus", () => {
+  it("devolve o código da resposta sem ler corpo nenhum", async () => {
+    const mock = fetchFalso(404, null, { json: false });
+
+    expect(await requestStatus("/api/messages/?hash=abc")).toBe(404);
+    expect(mock.mock.calls[0][1].method).toBe("HEAD");
+    expect(mock.mock.calls[0][1].credentials).toBe("same-origin");
+  });
+
+  it("vira ApiError quando a rede falha", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new TypeError("offline");
+    });
+
+    await expect(requestStatus("/api/messages/")).rejects.toThrow(ApiError);
+  });
+});
+
+describe("createRemote.hasMessage", () => {
+  const blob = new Uint8Array([1, 2, 3]);
+
+  it("pergunta pelo hash do arquivo", async () => {
+    const mock = fetchFalso(404, null, { json: false });
+    await createRemote(SESSAO).hasMessage(blob);
+
+    expect(mock.mock.calls[0][0]).toBe(`/api/messages/?hash=${await sha256Hex(blob)}`);
+  });
+
+  it("diz que já está salva quando o servidor responde 200", async () => {
+    fetchFalso(200, null, { json: false });
+
+    expect(await createRemote(SESSAO).hasMessage(blob)).toBe(true);
+  });
+
+  it("diz que não está salva quando o servidor responde 404", async () => {
+    fetchFalso(404, null, { json: false });
+
+    expect(await createRemote(SESSAO).hasMessage(blob)).toBe(false);
+  });
+
+  it("não engole outros códigos de erro", async () => {
+    fetchFalso(500, null, { json: false });
+
+    await expect(createRemote(SESSAO).hasMessage(blob)).rejects.toThrow(/erro 500/);
+  });
+});
+
+describe("fromBase64", () => {
+  it("volta aos mesmos bytes que o toBase64 gerou", () => {
+    const bytes = new Uint8Array([0, 1, 2, 250, 255, 128]);
+
+    expect([...fromBase64(toBase64(bytes))]).toEqual([...bytes]);
+  });
+
+  it("aguenta um blob grande", () => {
+    const bytes = new Uint8Array(100000).map((_, index) => index % 256);
+
+    expect([...fromBase64(toBase64(bytes))]).toEqual([...bytes]);
+  });
+});
+
+describe("createRemote.listMessages", () => {
+  it("chama o endpoint sem query quando não há filtro", async () => {
+    const mock = fetchFalso(200, { results: [] });
+    await createRemote(SESSAO).listMessages();
+
+    expect(mock.mock.calls[0][0]).toBe("/api/messages/");
+  });
+
+  it("descarta filtros vazios", async () => {
+    const mock = fetchFalso(200, { results: [] });
+    await createRemote(SESSAO).listMessages({ direction: "", from: "", to: "", page: 2 });
+
+    expect(mock.mock.calls[0][0]).toBe("/api/messages/?page=2");
+  });
+
+  it("monta a query com os filtros preenchidos", async () => {
+    const mock = fetchFalso(200, { results: [] });
+    await createRemote(SESSAO).listMessages({ direction: "sent", from: "2026-09-01", page: 1 });
+
+    expect(mock.mock.calls[0][0]).toBe("/api/messages/?direction=sent&from=2026-09-01&page=1");
+  });
+});
+
+describe("createRemote.fetchBlob", () => {
+  it("pede o blob da mensagem pelo id", async () => {
+    const mock = fetchFalso(200, { blob: "AAA=" });
+    await createRemote(SESSAO).fetchBlob(7);
+
+    expect(mock.mock.calls[0][0]).toBe("/api/messages/7/blob/");
   });
 });

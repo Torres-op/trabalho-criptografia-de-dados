@@ -8,6 +8,7 @@ import {
   HEADER_SIZE,
   IV_SIZE,
   MAGIC,
+  MAX_FILE_SIZE,
   VERSION,
   buildAad,
   fileName,
@@ -30,6 +31,10 @@ function sample(overrides = {}) {
 }
 
 describe("layout do cabeçalho (D5)", () => {
+  it("usa o mesmo limite de tamanho do servidor", () => {
+    expect(MAX_FILE_SIZE).toBe(1024 * 1024);
+  });
+
   it("usa o magic TRHS fixado em D5", () => {
     expect([...MAGIC]).toEqual([0x54, 0x52, 0x48, 0x53]);
   });

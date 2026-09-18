@@ -15,12 +15,19 @@ Aplicativo de mensagens criptografadas entre **dois usuários fixos**. A mensage
 | 3 — compressão com Huffman | ✅ |
 | 4 — chaves ECDH, HKDF e AES-GCM | ✅ |
 | 5 — formato do arquivo e bloco armored | ✅ |
-| 6 — API de histórico | parcial: falta 6.4, 6.5 e 6.8 |
+| 6 — API de histórico | ✅ |
 | 7 — fluxo de envio | ✅ |
+| 8 — compartilhamento | ✅ |
+| 9 — tradutor | ✅ |
+| 10 — histórico | ✅ |
+| 11 — identidade e backup de chave | parcial: falta 11.7 |
+| 12 — interface e UX | ✅ |
+| 13 — segurança e hardening | ✅ |
+| 14 — testes e qualidade | parcial: 14.6 e 14.8 são manuais |
 
 A compressão e a cifragem são **reais**. O fluxo completo funciona: cada usuário gera o próprio par de chaves no primeiro acesso, o servidor distribui as chaves públicas, e o arquivo gerado por um só abre no navegador do outro.
 
-⚠️ **Ainda não há verificação de fingerprint (Épico 11).** Até lá, quem controlar o servidor pode entregar uma chave falsa no primeiro acesso. Não use para nada realmente sensível.
+⚠️ **A verificação de identidade existe, mas depende de você.** A tela **Identidade** mostra o código de segurança das duas chaves; enquanto você não comparar os códigos com a outra pessoa por um canal fora do app, um servidor comprometido ainda pode ter entregado uma chave falsa no primeiro acesso. Falta também a CSP do Épico 13.
 
 ---
 
@@ -74,33 +81,41 @@ Entre com um usuário em cada aba. Assim que os dois tiverem aberto o app uma ve
 ## Estrutura
 
 ```
-core/                      projeto Django (settings, urls, test_runner)
+core/                      projeto Django (settings, urls, middleware, test_runner)
 messenger/                 app principal
   models.py                Profile e Message
   participants.py          os 2 participantes e o sender_id
+  throttle.py              limite de tentativas de login
   api.py                   endpoints de chave pública e de histórico
   jwk.py                   validação e forma canônica da chave pública
   message_format.py        leitura do cabeçalho .treehash no servidor
   admin.py
   tests/                   suíte Django
-  templates/messenger/     compose, translator, login
+  templates/messenger/     compose, translator, history, identity, login
   static/messenger/js/
     frequency-table.js     tabela de frequência (gerada)
     huffman-codebook.js    códebook canônico
     huffman.js             compressão
     crypto.js              ECDH + HKDF + AES-GCM
     keys.js                ciclo de vida das chaves
+    fingerprint.js         código de segurança da chave pública
+    key-backup.js          backup da chave privada cifrado por senha
     keystore.js            IndexedDB, separado por usuário
     format.js              formato binário .treehash
     armor.js               bloco de texto colável para WhatsApp e e-mail
+    share.js               download, cópia, e-mail e compartilhamento nativo
     search-tree.js         árvore binária de busca dos caracteres
     tree-view.js           desenho da árvore no compositor
     api.js                 chamadas ao servidor
+    history.js             tela de histórico: filtros, decifrar e baixar de novo
+    identity.js            tela de identidade: fingerprint, backup e restauração
+    badge.js               indicador de estado criptográfico no topo
     app.js                 pipeline e sessão
     environment.js         guarda de contexto seguro
     ui.js, compose.js, translator.js
 tests/                     suíte Vitest
-tools/                     gerador da tabela de frequência e corpus
+  vectors/                 chaves e arquivos de referência, versionados (14.9)
+tools/                     geradores da tabela de frequência e dos vetores
 docs/                      backlog, infraestrutura e convenções
 ```
 
@@ -112,6 +127,7 @@ docs/                      backlog, infraestrutura e convenções
 | [`docs/formato.md`](docs/formato.md) | O formato `.treehash` byte a byte, com exemplo real e checklist para reimplementar |
 | [`docs/infraestrutura.md`](docs/infraestrutura.md) | Ambiente Docker, comandos, variáveis, troubleshooting |
 | [`docs/convencoes.md`](docs/convencoes.md) | Convenções de código |
+| [`docs/roteiro-de-testes.md`](docs/roteiro-de-testes.md) | Os testes que não dá para automatizar: duas máquinas, adulteração e perda de chave |
 
 **Antes de escrever código, leia as decisões D1–D13** no início do backlog. Elas fixam o formato binário, os parâmetros de derivação de chave e o alfabeto do Huffman — coisas que precisam ser idênticas nos dois lados da comunicação. Divergir delas faz o app falhar silenciosamente.
 

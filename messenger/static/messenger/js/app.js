@@ -31,7 +31,7 @@ export async function openSession(context, remote) {
     await remote.publishPublicKey(await exportPublicKey(pair.publicKey));
   } catch (error) {
     if (error.code === "key_conflict") {
-      return { ...pendingSession, reason: error.message };
+      return { ...pendingSession, reason: error.message, keyConflict: true };
     }
     notices.push(`Não foi possível confirmar sua chave pública com o servidor: ${error.message}`);
   }
@@ -47,6 +47,7 @@ export async function openSession(context, remote) {
     ready: true,
     aesKey,
     senderId: senderIdFor(username, peerUsername),
+    peerVerified: peer.verified === true,
   };
 }
 
@@ -84,7 +85,7 @@ async function resolvePeer(owner, peerUsername, remote, notices) {
   }
 
   await savePeerPublicKey(owner, { jwk: published.jwk, peerUsername });
-  return loadPeerPublicKey(owner);
+  return { ...(await loadPeerPublicKey(owner)), verified: published.fingerprintVerified === true };
 }
 
 export async function composeMessage(text, session) {

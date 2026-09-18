@@ -99,7 +99,7 @@ class CsrfTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_accepts_the_token_delivered_in_the_page(self):
-        page = self.client.get(reverse("messenger:compose"))
+        page = self.client.get(reverse("messenger:identity"))
         token = page.context["session"]["csrfToken"]
         response = self.client.post(
             PUBLISH_URL,

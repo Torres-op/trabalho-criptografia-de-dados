@@ -14,6 +14,7 @@ export const IV_SIZE = 12;
 export const HEADER_SIZE = 27;
 export const TAG_SIZE = 16;
 export const EXTENSION = ".treehash";
+export const MAX_FILE_SIZE = 1024 * 1024;
 export const EARLIEST_VALID_CREATED_AT = Date.UTC(2024, 0, 1);
 export const FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
 

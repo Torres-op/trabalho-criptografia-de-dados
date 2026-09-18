@@ -8,6 +8,9 @@ from .factories import CREATED_AT_MS, make_blob
 
 
 class ParseHeaderTests(SimpleTestCase):
+    def test_keeps_the_same_size_limit_as_the_browser(self):
+        self.assertEqual(MAX_SIZE, 1024 * 1024)
+
     def test_uses_the_magic_fixed_by_d5(self):
         self.assertEqual(MAGIC, b"TRHS")
 

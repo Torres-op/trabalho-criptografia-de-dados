@@ -15,7 +15,12 @@
          class="{% if request.resolver_match.url_name == 'compose' %}active{% endif %}">Compor</a>
       <a href="{% url 'messenger:translator' %}"
          class="{% if request.resolver_match.url_name == 'translator' %}active{% endif %}">Tradutor</a>
+      <a href="{% url 'messenger:history' %}"
+         class="{% if request.resolver_match.url_name == 'history' %}active{% endif %}">Histórico</a>
+      <a href="{% url 'messenger:identity' %}"
+         class="{% if request.resolver_match.url_name == 'identity' %}active{% endif %}">Identidade</a>
     </nav>
+    <a id="badge" class="badge-status" href="{% url 'messenger:identity' %}" hidden></a>
     <div class="account">
       <span class="account__name">{{ user.get_username }}</span>
       <form method="post" action="{% url 'messenger:logout' %}" class="logout-form">

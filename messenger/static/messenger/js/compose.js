@@ -15,7 +15,16 @@ import {
   searchPath,
   sharedValues,
 } from "./search-tree.js";
+import {
+  canShareFile,
+  copyText,
+  fileFor,
+  mailtoLink,
+  pasteBlock,
+  shareFile,
+} from "./share.js";
 import { createTreeView, renderValueTable } from "./tree-view.js";
+import { showBadge } from "./badge.js";
 import * as ui from "./ui.js";
 
 const STAGE_TITLES = Object.freeze({
@@ -25,6 +34,7 @@ const STAGE_TITLES = Object.freeze({
   FormatError: "Falha ao montar o arquivo",
 });
 
+const MAX_CHARACTERS = 100000;
 const BUILD_MS = 5000;
 const MIN_STEP_MS = 90;
 const MAX_STEP_MS = 420;
@@ -34,6 +44,13 @@ const button = document.querySelector("#generate");
 const counter = document.querySelector("#counter");
 const status = document.querySelector("#status");
 const notices = document.querySelector("#notices");
+const shareSection = document.querySelector("#share");
+const downloadButton = document.querySelector("#share-download");
+const copyButton = document.querySelector("#share-copy");
+const mailLink = document.querySelector("#share-mail");
+const nativeButton = document.querySelector("#share-native");
+const shareStatus = document.querySelector("#share-status");
+const shareText = document.querySelector("#share-text");
 const treePanel = document.querySelector("#tree-panel");
 const treeNote = document.querySelector("#tree-note");
 const treeValues = document.querySelector("#tree-values");
@@ -42,6 +59,7 @@ const replayButton = document.querySelector("#tree-replay");
 const fitButton = document.querySelector("#tree-fit");
 
 let last = null;
+let context = null;
 let session = null;
 let remote = null;
 let view = null;
@@ -62,6 +80,9 @@ function start() {
   button.addEventListener("click", generate);
   replayButton.addEventListener("click", replayOrSkip);
   fitButton.addEventListener("click", () => view?.fit());
+  downloadButton.addEventListener("click", downloadAgain);
+  copyButton.addEventListener("click", copyAsText);
+  nativeButton.addEventListener("click", shareNative);
   updateCounter();
   openKeys();
 }
@@ -73,31 +94,44 @@ async function openKeys() {
   });
 
   try {
-    const context = readSessionData();
+    context = readSessionData();
     remote = createRemote(context);
     session = await openSession(context, remote);
     messages.push(...session.notices);
     if (!session.ready) {
       messages.push(session.reason);
+    } else if (!session.peerVerified) {
+      messages.push(
+        `Você ainda não conferiu o código de segurança de ${session.peerUsername}. Enquanto isso ` +
+          "não for feito, um servidor comprometido poderia estar no meio da conversa: confira em Identidade."
+      );
     }
   } catch (error) {
     messages.push(`Não foi possível preparar suas chaves: ${error.message}`);
   }
 
   ui.showNotices(notices, messages);
+  showBadge(document.querySelector("#badge"), { context, session, remote });
   updateCounter();
 }
 
 function updateCounter() {
   const n = [...textArea.value].length;
-  counter.textContent = `${n.toLocaleString("pt-BR")} caractere${n === 1 ? "" : "s"}`;
-  button.disabled = n === 0 || !session?.ready;
+  const tooLong = n > MAX_CHARACTERS;
+
+  counter.className = tooLong ? "counter counter--over" : "counter";
+  counter.textContent = tooLong
+    ? `${n.toLocaleString("pt-BR")} caracteres — o limite é ${MAX_CHARACTERS.toLocaleString("pt-BR")}`
+    : `${n.toLocaleString("pt-BR")} caractere${n === 1 ? "" : "s"}`;
+  button.disabled = n === 0 || tooLong || session?.ready !== true;
 }
 
 async function generate() {
   ui.clearStatus(status);
   stopBuild();
+  shareSection.hidden = true;
   treePanel.hidden = true;
+  ui.showLoading(status, "Gerando a mensagem...", "Comprimindo e cifrando no seu navegador.");
   button.disabled = true;
   button.textContent = "Gerando...";
 
@@ -110,6 +144,7 @@ async function generate() {
   }
 
   ui.downloadFile(last.file, last.name);
+  showShare();
   showTree(textArea.value);
 
   const size = ui.formatBytes(last.file.length);
@@ -134,6 +169,59 @@ function finish() {
 
 function stageTitle(error) {
   return STAGE_TITLES[error?.name] ?? "Não foi possível gerar o arquivo";
+}
+
+function showShare() {
+  shareStatus.hidden = true;
+  shareText.hidden = true;
+  shareText.value = "";
+  mailLink.href = mailtoLink(last.name);
+  nativeButton.hidden = !canShareFile(fileFor(last.file, last.name));
+  shareSection.hidden = false;
+}
+
+function showShareStatus(message) {
+  shareStatus.textContent = message;
+  shareStatus.hidden = false;
+}
+
+function downloadAgain() {
+  if (last === null) {
+    return;
+  }
+  ui.downloadFile(last.file, last.name);
+  showShareStatus(`Baixado de novo: ${last.name}`);
+}
+
+async function copyAsText() {
+  if (last === null) {
+    return;
+  }
+
+  const block = pasteBlock(last.file);
+  if (await copyText(block)) {
+    shareText.hidden = true;
+    showShareStatus("Bloco copiado. Cole no WhatsApp ou no corpo do e-mail.");
+    return;
+  }
+
+  shareText.value = block;
+  shareText.hidden = false;
+  shareText.select();
+  showShareStatus("O navegador não deixou copiar sozinho. O bloco está aqui embaixo, já selecionado.");
+}
+
+async function shareNative() {
+  if (last === null) {
+    return;
+  }
+
+  const result = await shareFile(fileFor(last.file, last.name));
+  if (result === "shared") {
+    showShareStatus("Arquivo entregue ao menu de compartilhamento do sistema.");
+  } else if (result === "failed") {
+    showShareStatus("O compartilhamento do sistema não funcionou aqui. Use o download ou o bloco de texto.");
+  }
 }
 
 function showTree(text) {

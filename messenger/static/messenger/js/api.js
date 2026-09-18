@@ -69,6 +69,31 @@ export async function requestJson(url, { method = "GET", body, csrfToken } = {})
   return payload;
 }
 
+export async function sha256Hex(bytes) {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function requestStatus(url, { method = "HEAD" } = {}) {
+  try {
+    const response = await fetch(url, { method, credentials: "same-origin" });
+    return response.status;
+  } catch {
+    throw new ApiError("Não foi possível falar com o servidor. Verifique a conexão.", {
+      code: "network_error",
+    });
+  }
+}
+
+export function fromBase64(text) {
+  const binary = atob(text);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
 export function toBase64(bytes) {
   const chunk = 0x8000;
   let binary = "";
@@ -84,6 +109,40 @@ export function createRemote(session) {
     publishPublicKey: (jwk) =>
       requestJson(endpoints.publishPublicKey, { method: "POST", body: { jwk }, csrfToken }),
     fetchPeerPublicKey: () => requestJson(endpoints.peerPublicKey),
+    listMessages: (filters = {}) => {
+      const query = new URLSearchParams();
+      for (const [key, value] of Object.entries(filters)) {
+        if (value !== undefined && value !== null && value !== "") {
+          query.set(key, value);
+        }
+      }
+      const search = query.toString();
+      return requestJson(search ? `${endpoints.messages}?${search}` : endpoints.messages);
+    },
+    fetchBlob: (id) => requestJson(`${endpoints.messages}${id}/blob/`),
+    hasMessage: async (file) => {
+      const status = await requestStatus(`${endpoints.messages}?hash=${await sha256Hex(file)}`);
+      if (status !== 200 && status !== 404) {
+        throw new ApiError(`O servidor respondeu com erro ${status}.`, {
+          status,
+          code: "http_error",
+        });
+      }
+      return status === 200;
+    },
+    saveKeyBackup: (bytes) =>
+      requestJson(endpoints.keyBackup, {
+        method: "POST",
+        body: { blob: toBase64(bytes) },
+        csrfToken,
+      }),
+    fetchKeyBackup: () => requestJson(endpoints.keyBackup),
+    verifyFingerprint: (value) =>
+      requestJson(endpoints.fingerprint, {
+        method: "POST",
+        body: { fingerprint: value },
+        csrfToken,
+      }),
     saveMessage: (file, direction) =>
       requestJson(endpoints.messages, {
         method: "POST",
