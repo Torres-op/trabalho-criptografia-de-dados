@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -235,3 +236,93 @@ class DeduplicationTests(TestCase):
 
     def test_requires_login(self):
         self.assertEqual(self.head(self.digest, client=Client()).status_code, 401)
+
+
+class MessageBlobTests(TestCase):
+    def setUp(self):
+        self.diretor, self.marcio = make_pair()
+        self.client.force_login(self.diretor)
+        self.blob = make_blob(sender_id=0)
+        self.message = Message.objects.create(
+            sender=self.diretor,
+            recipient=self.marcio,
+            blob=self.blob,
+            created_at=datetime(2026, 9, 17, 12, tzinfo=timezone.utc),
+            direction=Message.Direction.SENT,
+        )
+
+    def url(self, message_id=None):
+        return reverse("messenger:api-message-blob", args=[message_id or self.message.pk])
+
+    def test_returns_the_stored_bytes_with_the_metadata(self):
+        body = self.client.get(self.url()).json()
+
+        self.assertEqual(base64.b64decode(body["blob"]), self.blob)
+        self.assertEqual(body["id"], self.message.pk)
+        self.assertEqual(body["direction"], "sent")
+
+    def test_does_not_serve_the_copy_of_the_other_user(self):
+        self.client.force_login(self.marcio)
+        response = self.client.get(self.url())
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "message_not_found")
+
+    def test_answers_404_for_a_message_that_does_not_exist(self):
+        self.assertEqual(self.client.get(self.url(self.message.pk + 99)).status_code, 404)
+
+    def test_requires_login(self):
+        self.assertEqual(Client().get(self.url()).status_code, 401)
+
+    def test_refuses_who_is_not_a_participant(self):
+        self.client.force_login(make_superuser())
+
+        self.assertEqual(self.client.get(self.url()).status_code, 403)
+
+
+class ListFilterTests(TestCase):
+    def setUp(self):
+        self.diretor, self.marcio = make_pair()
+        self.client.force_login(self.diretor)
+        self.sent = self.create(Message.Direction.SENT, datetime(2026, 9, 1, 12, tzinfo=timezone.utc))
+        self.received = self.create(
+            Message.Direction.RECEIVED, datetime(2026, 9, 10, 12, tzinfo=timezone.utc)
+        )
+
+    def create(self, direction, created_at):
+        sent = direction == Message.Direction.SENT
+        return Message.objects.create(
+            sender=self.diretor if sent else self.marcio,
+            recipient=self.marcio if sent else self.diretor,
+            blob=make_blob(sender_id=0 if sent else 1),
+            created_at=created_at,
+            direction=direction,
+        )
+
+    def ids(self, query=""):
+        return [item["id"] for item in self.client.get(f"{MESSAGES_URL}{query}").json()["results"]]
+
+    def test_lists_everything_without_filter(self):
+        self.assertCountEqual(self.ids(), [self.sent.pk, self.received.pk])
+
+    def test_filters_by_direction(self):
+        self.assertEqual(self.ids("?direction=sent"), [self.sent.pk])
+        self.assertEqual(self.ids("?direction=received"), [self.received.pk])
+
+    def test_filters_from_a_date(self):
+        self.assertEqual(self.ids("?from=2026-09-05"), [self.received.pk])
+
+    def test_filters_until_a_date(self):
+        self.assertEqual(self.ids("?to=2026-09-05"), [self.sent.pk])
+
+    def test_rejects_an_unknown_direction(self):
+        response = self.client.get(f"{MESSAGES_URL}?direction=xpto")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "invalid_filter")
+
+    def test_rejects_a_date_that_is_not_a_date(self):
+        response = self.client.get(f"{MESSAGES_URL}?from=ontem")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("AAAA-MM-DD", response.json()["error"])
