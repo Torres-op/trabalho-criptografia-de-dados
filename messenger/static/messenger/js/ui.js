@@ -29,26 +29,16 @@ export function showNotices(target, messages) {
   target.append(list);
 }
 
+export const FAKE_NOTICE =
+  "A compressão ou a cifragem ainda são implementações provisórias. " +
+  "Nenhuma mensagem gerada aqui é segura.";
+
 export async function reportEnvironment(target, checks) {
-  const messages = [];
-
-  if (checks.isFakeImplementation()) {
-    messages.push(
-      "A compressão ou a cifragem ainda são implementações provisórias. " +
-        "Nenhuma mensagem gerada aqui é segura."
-    );
-  }
-
-  if (!(await checks.requestPersistentStorage())) {
-    messages.push(
-      "O navegador não garantiu armazenamento permanente para este site. " +
-        "Se ele limpar os dados, a chave privada guardada aqui é perdida junto " +
-        "e as mensagens antigas ficam ilegíveis."
-    );
-  }
+  const messages = checks.isFakeImplementation() ? [FAKE_NOTICE] : [];
+  const persisted = await checks.requestPersistentStorage();
 
   showNotices(target, messages);
-  return messages;
+  return { messages, persisted };
 }
 
 export function showStatus(target, kind, title, detail = "") {

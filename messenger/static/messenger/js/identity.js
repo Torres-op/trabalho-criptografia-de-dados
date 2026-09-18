@@ -4,6 +4,7 @@ import {
   EnvironmentError,
   requestPersistentStorage,
   requireSecureContext,
+  storageNotices,
 } from "./environment.js";
 import { showBadge } from "./badge.js";
 import { fingerprintOf } from "./fingerprint.js";
@@ -60,10 +61,12 @@ function start() {
 }
 
 async function load() {
-  const messages = await ui.reportEnvironment(notices, {
+  const { messages, persisted } = await ui.reportEnvironment(notices, {
     isFakeImplementation,
     requestPersistentStorage,
   });
+
+  let backup = false;
 
   try {
     context = readSessionData();
@@ -77,13 +80,14 @@ async function load() {
 
     await publishMine(messages);
     await showPeer(messages);
-    await showBackupState();
+    backup = await showBackupState();
   } catch (error) {
     messages.push(`Não foi possível preparar esta tela: ${error.message}`);
   }
 
+  messages.push(...storageNotices({ persisted, backup }));
   ui.showNotices(notices, messages);
-  showBadge(document.querySelector("#badge"), { context, session, remote });
+  showBadge(document.querySelector("#badge"), { context, session, remote, backup });
 }
 
 async function publishMine(messages) {
@@ -160,6 +164,7 @@ async function showBackupState() {
     )}. Guardar de novo cria uma versão nova, e a mais recente é a que o app usa.`;
     serverDate.textContent = ui.formatDate(Date.parse(backup.createdAt));
     serverBackup.hidden = false;
+    return true;
   } catch (error) {
     if (error.code !== "backup_not_found") {
       throw error;
@@ -167,6 +172,7 @@ async function showBackupState() {
     backupState.textContent =
       "Você ainda não guardou um backup. Sem ele, perder este navegador é perder o histórico.";
     serverBackup.hidden = true;
+    return false;
   }
 }
 
@@ -200,6 +206,7 @@ async function createBackup() {
     password.value = "";
     confirmPassword.value = "";
     await showBackupState();
+    showBadge(document.querySelector("#badge"), { context, session, remote, backup: true });
     ui.showStatus(
       status,
       "success",

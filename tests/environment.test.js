@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   EnvironmentError,
+  PERSISTENCE_NOTICE,
   requestPersistentStorage,
   requireSecureContext,
+  storageNotices,
 } from "../messenger/static/messenger/js/environment.js";
 
 afterEach(() => {
@@ -83,5 +85,26 @@ describe("armazenamento persistente (4.9)", () => {
   it("não quebra quando navigator existe mas storage não", async () => {
     vi.stubGlobal("navigator", {});
     expect(await requestPersistentStorage()).toBe(false);
+  });
+});
+
+describe("aviso de armazenamento", () => {
+  it("cala quando o navegador prometeu armazenamento permanente", () => {
+    expect(storageNotices({ persisted: true, backup: false })).toEqual([]);
+  });
+
+  it("cala quando há backup guardado, mesmo sem armazenamento permanente", () => {
+    expect(storageNotices({ persisted: false, backup: true })).toEqual([]);
+  });
+
+  it("avisa e aponta a saída quando não há nem um nem outro", () => {
+    const [aviso] = storageNotices({ persisted: false, backup: false });
+
+    expect(aviso).toBe(PERSISTENCE_NOTICE);
+    expect(aviso).toMatch(/Identidade/);
+  });
+
+  it("na dúvida, avisa", () => {
+    expect(storageNotices()).toHaveLength(1);
   });
 });
