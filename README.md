@@ -163,7 +163,7 @@ messenger/                 app principal
     keystore.js            IndexedDB, separado por usuário
     format.js              formato binário .treehash
     armor.js               bloco de texto colável para WhatsApp e e-mail
-    share.js               download, cópia, e-mail e compartilhamento nativo
+    share.js               bloco colável e cópia para a área de transferência
     search-tree.js         árvore binária de busca dos caracteres
     tree-view.js           desenho da árvore no compositor
     api.js                 chamadas ao servidor

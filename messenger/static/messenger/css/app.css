@@ -409,20 +409,6 @@ code {
   margin-bottom: 12px;
 }
 
-.button-link {
-  display: inline-block;
-  padding: 10px 18px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--accent);
-  border-radius: 8px;
-  text-decoration: none;
-}
-
-.button-link:hover {
-  filter: brightness(1.1);
-}
-
 .share-text {
   width: 100%;
   margin-bottom: 12px;
@@ -433,10 +419,6 @@ code {
 @media (max-width: 480px) {
   .share-actions {
     flex-direction: column;
-  }
-
-  .share-actions .button-link {
-    text-align: center;
   }
 }
 

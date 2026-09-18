@@ -36,17 +36,6 @@ export async function requestPersistentStorage() {
   }
 }
 
-export async function hasPersistentStorage() {
-  if (!globalThis.navigator?.storage?.persisted) {
-    return false;
-  }
-  try {
-    return await navigator.storage.persisted();
-  } catch {
-    return false;
-  }
-}
-
 export const PERSISTENCE_NOTICE =
   "O navegador não garantiu armazenamento permanente para este site e você ainda não guardou " +
   "um backup da sua chave. Se ele limpar os dados do site, a chave some junto e o histórico " +
