@@ -15,6 +15,14 @@ import {
   searchPath,
   sharedValues,
 } from "./search-tree.js";
+import {
+  canShareFile,
+  copyText,
+  fileFor,
+  mailtoLink,
+  pasteBlock,
+  shareFile,
+} from "./share.js";
 import { createTreeView, renderValueTable } from "./tree-view.js";
 import * as ui from "./ui.js";
 
@@ -34,6 +42,13 @@ const button = document.querySelector("#generate");
 const counter = document.querySelector("#counter");
 const status = document.querySelector("#status");
 const notices = document.querySelector("#notices");
+const shareSection = document.querySelector("#share");
+const downloadButton = document.querySelector("#share-download");
+const copyButton = document.querySelector("#share-copy");
+const mailLink = document.querySelector("#share-mail");
+const nativeButton = document.querySelector("#share-native");
+const shareStatus = document.querySelector("#share-status");
+const shareText = document.querySelector("#share-text");
 const treePanel = document.querySelector("#tree-panel");
 const treeNote = document.querySelector("#tree-note");
 const treeValues = document.querySelector("#tree-values");
@@ -62,6 +77,9 @@ function start() {
   button.addEventListener("click", generate);
   replayButton.addEventListener("click", replayOrSkip);
   fitButton.addEventListener("click", () => view?.fit());
+  downloadButton.addEventListener("click", downloadAgain);
+  copyButton.addEventListener("click", copyAsText);
+  nativeButton.addEventListener("click", shareNative);
   updateCounter();
   openKeys();
 }
@@ -97,6 +115,7 @@ function updateCounter() {
 async function generate() {
   ui.clearStatus(status);
   stopBuild();
+  shareSection.hidden = true;
   treePanel.hidden = true;
   button.disabled = true;
   button.textContent = "Gerando...";
@@ -110,6 +129,7 @@ async function generate() {
   }
 
   ui.downloadFile(last.file, last.name);
+  showShare();
   showTree(textArea.value);
 
   const size = ui.formatBytes(last.file.length);
@@ -134,6 +154,59 @@ function finish() {
 
 function stageTitle(error) {
   return STAGE_TITLES[error?.name] ?? "Não foi possível gerar o arquivo";
+}
+
+function showShare() {
+  shareStatus.hidden = true;
+  shareText.hidden = true;
+  shareText.value = "";
+  mailLink.href = mailtoLink(last.name);
+  nativeButton.hidden = !canShareFile(fileFor(last.file, last.name));
+  shareSection.hidden = false;
+}
+
+function showShareStatus(message) {
+  shareStatus.textContent = message;
+  shareStatus.hidden = false;
+}
+
+function downloadAgain() {
+  if (last === null) {
+    return;
+  }
+  ui.downloadFile(last.file, last.name);
+  showShareStatus(`Baixado de novo: ${last.name}`);
+}
+
+async function copyAsText() {
+  if (last === null) {
+    return;
+  }
+
+  const block = pasteBlock(last.file);
+  if (await copyText(block)) {
+    shareText.hidden = true;
+    showShareStatus("Bloco copiado. Cole no WhatsApp ou no corpo do e-mail.");
+    return;
+  }
+
+  shareText.value = block;
+  shareText.hidden = false;
+  shareText.select();
+  showShareStatus("O navegador não deixou copiar sozinho. O bloco está aqui embaixo, já selecionado.");
+}
+
+async function shareNative() {
+  if (last === null) {
+    return;
+  }
+
+  const result = await shareFile(fileFor(last.file, last.name));
+  if (result === "shared") {
+    showShareStatus("Arquivo entregue ao menu de compartilhamento do sistema.");
+  } else if (result === "failed") {
+    showShareStatus("O compartilhamento do sistema não funcionou aqui. Use o download ou o bloco de texto.");
+  }
 }
 
 function showTree(text) {
