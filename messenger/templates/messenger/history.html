@@ -1,0 +1,45 @@
+{% extends "messenger/base.html" %}
+{% load static %}
+
+{% block title %}Histórico — Treehash{% endblock %}
+
+{% block content %}
+<h1>Histórico</h1>
+<p class="subtitle">As mensagens que você enviou e as que abriu no tradutor. O servidor guarda só o conteúdo cifrado: a leitura acontece aqui, com a sua chave.</p>
+
+<div class="filters">
+  <div class="filter">
+    <label for="direction">Origem</label>
+    <select id="direction">
+      <option value="">Todas</option>
+      <option value="sent">Enviadas</option>
+      <option value="received">Recebidas</option>
+    </select>
+  </div>
+  <div class="filter">
+    <label for="from">Escritas a partir de</label>
+    <input id="from" type="date">
+  </div>
+  <div class="filter">
+    <label for="to">até</label>
+    <input id="to" type="date">
+  </div>
+  <button id="apply" type="button">Filtrar</button>
+</div>
+
+<div id="status" class="status" hidden></div>
+
+<ul id="messages" class="messages"></ul>
+
+<div id="pager" class="row" hidden>
+  <span id="page-info" class="counter"></span>
+  <span class="pager-buttons">
+    <button id="previous" type="button" class="link-button">Anteriores</button>
+    <button id="next" type="button" class="link-button">Próximas</button>
+  </span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{% static 'messenger/js/history.js' %}"></script>
+{% endblock %}

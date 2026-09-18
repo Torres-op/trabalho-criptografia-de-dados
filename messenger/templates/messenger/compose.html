@@ -1,7 +1,7 @@
 {% extends "messenger/base.html" %}
 {% load static %}
 
-{% block title %}Compor — Mensagens Criptografadas{% endblock %}
+{% block title %}Compor — Treehash{% endblock %}
 
 {% block content %}
 <h1>Compor mensagem</h1>
@@ -16,11 +16,48 @@
 
 <div id="status" class="status" hidden></div>
 
-<table id="stats" class="stats" hidden>
-  <caption>Compressão</caption>
-  <tbody></tbody>
-</table>
-<p id="stats-note" class="meta" hidden></p>
+<section id="share" hidden>
+  <h2>Enviar para o destinatário</h2>
+  <div class="share-actions">
+    <button id="share-download" type="button">Baixar arquivo</button>
+    <button id="share-copy" type="button">Copiar como texto</button>
+    <a id="share-mail" class="button-link" href="mailto:">Abrir no e-mail</a>
+    <button id="share-native" type="button" hidden>Compartilhar</button>
+  </div>
+  <p id="share-status" class="meta" hidden></p>
+  <textarea id="share-text" class="share-text" rows="5" readonly hidden aria-label="Bloco de texto da mensagem"></textarea>
+  <p class="meta">O arquivo já sai criptografado e pode ir por pen-drive, WhatsApp ou e-mail. Para o pen-drive, basta copiar o arquivo baixado. O botão de e-mail abre o seu programa de e-mail, mas <strong>não anexa o arquivo</strong>: anexe você mesmo ou cole o bloco de texto no corpo da mensagem.</p>
+  <p class="meta">⚠️ Não use o mesmo canal para confirmar a identidade do outro usuário nem para enviar senhas. Se o canal estiver comprometido, tudo vai junto.</p>
+</section>
+
+<section id="tree-panel" hidden>
+  <div class="tree-header">
+    <h2>Árvore Binária de Busca</h2>
+    <div class="tree-controls">
+      <button id="tree-replay" type="button" class="link-button">Mostrar tudo</button>
+      <button id="tree-fit" type="button" class="link-button">Centralizar</button>
+    </div>
+  </div>
+  <p id="tree-note" class="meta" hidden></p>
+  <div class="tree-layout">
+    <div id="tree" class="tree-view"></div>
+    <div class="tree-side">
+      <table id="tree-values" class="codes">
+        <caption>Percurso em ordem</caption>
+        <thead>
+          <tr>
+            <th scope="col">Caractere</th>
+            <th scope="col">ASCII</th>
+            <th scope="col">Vezes</th>
+            <th scope="col">Valor</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <p class="meta">Arraste para mover a árvore e use o scroll do mouse para aproximar ou afastar.</p>
+</section>
 {% endblock %}
 
 {% block scripts %}
