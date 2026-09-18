@@ -15,6 +15,8 @@
          class="{% if request.resolver_match.url_name == 'compose' %}active{% endif %}">Compor</a>
       <a href="{% url 'messenger:translator' %}"
          class="{% if request.resolver_match.url_name == 'translator' %}active{% endif %}">Tradutor</a>
+      <a href="{% url 'messenger:history' %}"
+         class="{% if request.resolver_match.url_name == 'history' %}active{% endif %}">Histórico</a>
     </nav>
     <div class="account">
       <span class="account__name">{{ user.get_username }}</span>
