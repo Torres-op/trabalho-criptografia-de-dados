@@ -5,7 +5,7 @@ from django.urls import reverse
 
 from messenger.participants import ParticipantsNotConfigured
 
-from .factories import make_pair, make_participant, make_superuser
+from .factories import make_backup, make_pair, make_participant, make_superuser
 
 
 class PageAccessTests(TestCase):
@@ -18,8 +18,25 @@ class PageAccessTests(TestCase):
 
     def test_participant_opens_every_page(self):
         diretor, _ = make_pair()
+        make_backup(diretor)
         self.client.force_login(diretor)
         for name in ("compose", "translator", "history"):
+            with self.subTest(page=name):
+                self.assertEqual(self.client.get(reverse(f"messenger:{name}")).status_code, 200)
+
+    def test_pages_wait_for_the_key_backup(self):
+        diretor, _ = make_pair()
+        self.client.force_login(diretor)
+        for name in ("compose", "translator"):
+            with self.subTest(page=name):
+                self.assertRedirects(
+                    self.client.get(reverse(f"messenger:{name}")), reverse("messenger:identity")
+                )
+
+    def test_identity_and_history_do_not_wait_for_the_backup(self):
+        diretor, _ = make_pair()
+        self.client.force_login(diretor)
+        for name in ("identity", "history"):
             with self.subTest(page=name):
                 self.assertEqual(self.client.get(reverse(f"messenger:{name}")).status_code, 200)
 
@@ -38,6 +55,7 @@ class PageAccessTests(TestCase):
 class SessionDataTests(TestCase):
     def setUp(self):
         self.diretor, self.marcio = make_pair()
+        make_backup(self.diretor)
         self.client.force_login(self.diretor)
 
     def session_data(self, page="compose"):
@@ -81,6 +99,7 @@ class LayoutTests(TestCase):
 
     def test_authenticated_pages_show_the_user_and_logout(self):
         diretor, _ = make_pair()
+        make_backup(diretor)
         self.client.force_login(diretor)
         response = self.client.get(reverse("messenger:compose"))
         self.assertContains(response, "Sair")
