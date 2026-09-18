@@ -9,9 +9,11 @@ app_name = "messenger"
 urlpatterns = [
     path("", views.compose, name="compose"),
     path("translator/", views.translator, name="translator"),
+    path("history/", views.history, name="history"),
     path("login/", LoginView.as_view(template_name="messenger/login.html"), name="login"),
     path("logout/", login_required(LogoutView.as_view()), name="logout"),
     path("api/public-key/", api.publish_public_key, name="api-publish-public-key"),
     path("api/public-key/<str:username>/", api.fetch_public_key, name="api-public-key"),
     path("api/messages/", api.messages, name="api-messages"),
+    path("api/messages/<int:message_id>/blob/", api.message_blob, name="api-message-blob"),
 ]

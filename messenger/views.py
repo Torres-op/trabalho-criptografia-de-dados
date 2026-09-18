@@ -28,3 +28,8 @@ def compose(request):
 @login_required
 def translator(request):
     return render(request, "messenger/translator.html", {"session": session_context(request)})
+
+
+@login_required
+def history(request):
+    return render(request, "messenger/history.html", {"session": session_context(request)})

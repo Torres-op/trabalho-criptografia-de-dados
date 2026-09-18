@@ -3,6 +3,7 @@ import binascii
 import hashlib
 import json
 import re
+from datetime import date
 from functools import wraps
 
 from django.core.paginator import Paginator
@@ -24,6 +25,10 @@ KEY_CONFLICT_MESSAGE = (
 
 HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 PAGE_SIZE = 20
+
+
+class InvalidFilter(Exception):
+    pass
 
 
 def error_response(status, code, message):
@@ -146,8 +151,39 @@ def check_message(request):
     return HttpResponse(status=200 if found else 404)
 
 
+def parse_date(value):
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise InvalidFilter(f"Data inválida: {value}. Use o formato AAAA-MM-DD.") from None
+
+
+def filtered_messages(request):
+    messages = Message.objects.owned_by(request.user).select_related("sender", "recipient")
+
+    direction = request.GET.get("direction")
+    if direction is not None:
+        if direction not in Message.Direction.values:
+            raise InvalidFilter("Filtre por mensagens enviadas ou recebidas.")
+        messages = messages.filter(direction=direction)
+
+    since = request.GET.get("from")
+    if since is not None:
+        messages = messages.filter(created_at__date__gte=parse_date(since))
+
+    until = request.GET.get("to")
+    if until is not None:
+        messages = messages.filter(created_at__date__lte=parse_date(until))
+
+    return messages
+
+
 def list_messages(request):
-    owned = Message.objects.owned_by(request.user).select_related("sender", "recipient")
+    try:
+        owned = filtered_messages(request)
+    except InvalidFilter as error:
+        return error_response(400, "invalid_filter", str(error))
+
     page = Paginator(owned, PAGE_SIZE).get_page(request.GET.get("page"))
 
     return JsonResponse(
@@ -207,3 +243,15 @@ def save_message(request):
     )
 
     return JsonResponse(message_payload(message), status=201)
+
+
+@require_http_methods(["GET"])
+@participant_api
+def message_blob(request, message_id):
+    message = Message.objects.owned_by(request.user).filter(pk=message_id).first()
+    if message is None:
+        return error_response(404, "message_not_found", "Mensagem não encontrada no seu histórico.")
+
+    return JsonResponse(
+        {**message_payload(message), "blob": base64.b64encode(bytes(message.blob)).decode()}
+    )
