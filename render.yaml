@@ -8,6 +8,7 @@ databases:
 services:
   - type: web
     name: treehash
+    branch: main
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
