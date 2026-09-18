@@ -8,28 +8,26 @@ const complete = {
   peerKey: true,
   verified: true,
   backup: true,
-  persisted: true,
 };
 
 describe("sinais do indicador (12.4)", () => {
-  it("cobre os cinco sinais previstos no item", () => {
+  it("cobre os quatro sinais previstos no item", () => {
     expect(buildSignals(complete).map((signal) => signal.id)).toEqual([
       "localKey",
       "peerKey",
       "verified",
       "backup",
-      "persisted",
     ]);
   });
 
-  it("fica pronto só quando os cinco estão em ordem", () => {
-    expect(summarize(buildSignals(complete))).toEqual({ ok: 5, total: 5, ready: true });
+  it("fica pronto só quando os quatro estão em ordem", () => {
+    expect(summarize(buildSignals(complete))).toEqual({ ok: 4, total: 4, ready: true });
   });
 
   it("conta quantos sinais faltam", () => {
     const signals = buildSignals({ ...complete, verified: false, backup: false });
 
-    expect(summarize(signals)).toEqual({ ok: 3, total: 5, ready: false });
+    expect(summarize(signals)).toEqual({ ok: 2, total: 4, ready: false });
   });
 
   it("usa o nome do outro usuário no rótulo", () => {

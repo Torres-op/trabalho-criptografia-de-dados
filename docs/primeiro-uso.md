@@ -68,7 +68,7 @@ Agora o compositor está liberado.
 **Para enviar:**
 
 1. Abra **Compor**, escreva o texto e clique em cifrar.
-2. Escolha como entregar: **baixar o arquivo**, **copiar o bloco de texto**, **enviar por e-mail** ou **compartilhar** (no celular).
+2. Escolha como entregar: **baixar o arquivo** ou **copiar o bloco de texto** para colar onde quiser.
 3. Mande para a outra pessoa pelo canal que preferir. Pode ser WhatsApp mesmo: o que trafega já está cifrado.
 
 **Para ler o que recebeu:**
