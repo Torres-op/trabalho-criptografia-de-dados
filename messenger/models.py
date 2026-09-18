@@ -76,3 +76,22 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.sender} → {self.recipient} ({self.created_at:%d/%m/%Y %H:%M})"
+
+
+class KeyBackup(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="key_backups",
+        verbose_name="usuário",
+    )
+    blob = models.BinaryField("chave privada cifrada")
+    created_at = models.DateTimeField("criado em", auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "backup de chave"
+        verbose_name_plural = "backups de chave"
+
+    def __str__(self):
+        return f"{self.user} ({self.created_at:%d/%m/%Y %H:%M})"

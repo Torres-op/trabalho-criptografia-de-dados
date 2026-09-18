@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   createRemote,
+  fromBase64,
   readSessionData,
   requestJson,
   requestStatus,
@@ -223,5 +224,51 @@ describe("createRemote.hasMessage", () => {
     fetchFalso(500, null, { json: false });
 
     await expect(createRemote(SESSAO).hasMessage(blob)).rejects.toThrow(/erro 500/);
+  });
+});
+
+describe("fromBase64", () => {
+  it("volta aos mesmos bytes que o toBase64 gerou", () => {
+    const bytes = new Uint8Array([0, 1, 2, 250, 255, 128]);
+
+    expect([...fromBase64(toBase64(bytes))]).toEqual([...bytes]);
+  });
+
+  it("aguenta um blob grande", () => {
+    const bytes = new Uint8Array(100000).map((_, index) => index % 256);
+
+    expect([...fromBase64(toBase64(bytes))]).toEqual([...bytes]);
+  });
+});
+
+describe("createRemote.listMessages", () => {
+  it("chama o endpoint sem query quando não há filtro", async () => {
+    const mock = fetchFalso(200, { results: [] });
+    await createRemote(SESSAO).listMessages();
+
+    expect(mock.mock.calls[0][0]).toBe("/api/messages/");
+  });
+
+  it("descarta filtros vazios", async () => {
+    const mock = fetchFalso(200, { results: [] });
+    await createRemote(SESSAO).listMessages({ direction: "", from: "", to: "", page: 2 });
+
+    expect(mock.mock.calls[0][0]).toBe("/api/messages/?page=2");
+  });
+
+  it("monta a query com os filtros preenchidos", async () => {
+    const mock = fetchFalso(200, { results: [] });
+    await createRemote(SESSAO).listMessages({ direction: "sent", from: "2026-09-01", page: 1 });
+
+    expect(mock.mock.calls[0][0]).toBe("/api/messages/?direction=sent&from=2026-09-01&page=1");
+  });
+});
+
+describe("createRemote.fetchBlob", () => {
+  it("pede o blob da mensagem pelo id", async () => {
+    const mock = fetchFalso(200, { blob: "AAA=" });
+    await createRemote(SESSAO).fetchBlob(7);
+
+    expect(mock.mock.calls[0][0]).toBe("/api/messages/7/blob/");
   });
 });

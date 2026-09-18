@@ -2,9 +2,9 @@ import json
 
 from django.test import SimpleTestCase
 
-from messenger.jwk import InvalidPublicKey, canonical_public_jwk, load_public_jwk
+from messenger.jwk import InvalidPublicKey, canonical_public_jwk, fingerprint, load_public_jwk
 
-from .factories import JWK_A
+from .factories import JWK_A, JWK_B
 
 
 class CanonicalPublicJwkTests(SimpleTestCase):
@@ -66,3 +66,21 @@ class RejectionTests(SimpleTestCase):
 
     def test_rejects_impossible_base64_lengths(self):
         self.assert_rejected({**JWK_A, "x": "A"}, "coordenada x")
+
+
+class FingerprintTests(SimpleTestCase):
+    def test_matches_the_value_the_browser_computes(self):
+        self.assertEqual(
+            fingerprint(canonical_public_jwk(JWK_A)),
+            "e7fd 7e75 f50a 36ce 60fe 0e9e 08e4 adda f9f3 cd8b dbdb 6f8d",
+        )
+
+    def test_is_twelve_groups_of_four_hex_digits(self):
+        self.assertRegex(
+            fingerprint(canonical_public_jwk(JWK_B)), r"^([0-9a-f]{4} ){11}[0-9a-f]{4}$"
+        )
+
+    def test_different_keys_give_different_fingerprints(self):
+        self.assertNotEqual(
+            fingerprint(canonical_public_jwk(JWK_A)), fingerprint(canonical_public_jwk(JWK_B))
+        )

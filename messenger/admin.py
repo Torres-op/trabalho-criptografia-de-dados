@@ -1,6 +1,6 @@
 from django.contrib import admin, messages
 
-from .models import Message, Profile
+from .models import KeyBackup, Message, Profile
 
 
 @admin.register(Profile)
@@ -45,6 +45,24 @@ class MessageAdmin(admin.ModelAdmin):
     @admin.display(description="tamanho")
     def size(self, message):
         return f"{len(message.blob)} B"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(KeyBackup)
+class KeyBackupAdmin(admin.ModelAdmin):
+    list_display = ("user", "created_at", "size")
+    list_filter = ("user",)
+    readonly_fields = ("user", "created_at")
+    exclude = ("blob",)
+
+    @admin.display(description="tamanho")
+    def size(self, backup):
+        return f"{len(backup.blob)} B"
 
     def has_add_permission(self, request):
         return False

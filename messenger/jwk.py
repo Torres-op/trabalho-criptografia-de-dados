@@ -1,5 +1,6 @@
 import base64
 import binascii
+import hashlib
 import json
 import re
 
@@ -9,6 +10,10 @@ COORDINATE_BYTES = 32
 CANONICAL_MEMBERS = ("crv", "kty", "x", "y")
 
 _BASE64URL = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+FINGERPRINT_GROUPS = 12
+FINGERPRINT_GROUP_SIZE = 4
 
 
 class InvalidPublicKey(ValueError):
@@ -48,3 +53,9 @@ def _require_coordinate(raw, member):
         raise InvalidPublicKey(
             f"A coordenada {member} precisa ter {COORDINATE_BYTES} bytes, tem {len(decoded)}."
         )
+
+
+def fingerprint(canonical):
+    digest = hashlib.sha256(canonical.encode()).hexdigest()
+    groups = range(0, FINGERPRINT_GROUPS * FINGERPRINT_GROUP_SIZE, FINGERPRINT_GROUP_SIZE)
+    return " ".join(digest[start : start + FINGERPRINT_GROUP_SIZE] for start in groups)
