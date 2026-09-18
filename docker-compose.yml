@@ -2,15 +2,15 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-msgenc}
-      POSTGRES_USER: ${POSTGRES_USER:-msgenc}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-msgenc}
+      POSTGRES_DB: ${POSTGRES_DB:-treehash}
+      POSTGRES_USER: ${POSTGRES_USER:-treehash}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-treehash}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "${DB_PORT:-5433}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-msgenc}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-treehash}"]
       interval: 5s
       timeout: 3s
       retries: 10
