@@ -559,3 +559,57 @@ code {
     width: 100%;
   }
 }
+
+.card {
+  margin-top: 24px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.card h2 {
+  font-size: 1.05rem;
+  margin: 0 0 8px;
+}
+
+.card h3 {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.card input[type="password"],
+.card input[type="file"] {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.fingerprint-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 14px 0;
+}
+
+.fingerprint {
+  flex: 1 1 240px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.fingerprint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  letter-spacing: 0.04em;
+  word-spacing: 0.35em;
+}

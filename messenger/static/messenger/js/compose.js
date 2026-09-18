@@ -97,6 +97,11 @@ async function openKeys() {
     messages.push(...session.notices);
     if (!session.ready) {
       messages.push(session.reason);
+    } else if (!session.peerVerified) {
+      messages.push(
+        `Você ainda não conferiu o código de segurança de ${session.peerUsername}. Enquanto isso ` +
+          "não for feito, um servidor comprometido poderia estar no meio da conversa: confira em Identidade."
+      );
     }
   } catch (error) {
     messages.push(`Não foi possível preparar suas chaves: ${error.message}`);
