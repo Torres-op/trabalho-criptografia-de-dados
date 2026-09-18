@@ -10,16 +10,16 @@ from .factories import make_pair, make_participant, make_superuser
 
 class PageAccessTests(TestCase):
     def test_pages_require_login(self):
-        for name in ("compose", "translator"):
+        for name in ("compose", "translator", "history"):
             with self.subTest(page=name):
                 response = self.client.get(reverse(f"messenger:{name}"))
                 self.assertEqual(response.status_code, 302)
                 self.assertIn(reverse("messenger:login"), response["Location"])
 
-    def test_participant_opens_both_pages(self):
+    def test_participant_opens_every_page(self):
         diretor, _ = make_pair()
         self.client.force_login(diretor)
-        for name in ("compose", "translator"):
+        for name in ("compose", "translator", "history"):
             with self.subTest(page=name):
                 self.assertEqual(self.client.get(reverse(f"messenger:{name}")).status_code, 200)
 
