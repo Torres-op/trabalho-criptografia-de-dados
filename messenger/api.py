@@ -1,11 +1,13 @@
 import base64
 import binascii
+import hashlib
 import json
+import re
 from functools import wraps
 
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
@@ -20,6 +22,7 @@ KEY_CONFLICT_MESSAGE = (
     "Restaure o backup da sua chave ou peça ao administrador para liberar um novo registro."
 )
 
+HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 PAGE_SIZE = 20
 
 
@@ -124,12 +127,23 @@ def fetch_public_key(request, username):
     return JsonResponse(key_payload(target, target.profile))
 
 
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["GET", "HEAD", "POST"])
 @participant_api
 def messages(request):
     if request.method == "POST":
         return save_message(request)
+    if request.method == "HEAD":
+        return check_message(request)
     return list_messages(request)
+
+
+def check_message(request):
+    digest = request.GET.get("hash", "")
+    if not HASH_PATTERN.fullmatch(digest):
+        return HttpResponse(status=400)
+
+    found = Message.objects.owned_by(request.user).filter(blob_sha256=digest).exists()
+    return HttpResponse(status=200 if found else 404)
 
 
 def list_messages(request):
@@ -174,6 +188,15 @@ def save_message(request):
             "sender_mismatch",
             "O cabeçalho do arquivo indica outro remetente. A mensagem não foi salva.",
         )
+
+    digest = hashlib.sha256(blob).hexdigest()
+    saved = (
+        Message.objects.owned_by(request.user)
+        .filter(blob_sha256=digest, direction=direction)
+        .first()
+    )
+    if saved is not None:
+        return JsonResponse(message_payload(saved), status=200)
 
     message = Message.objects.create(
         sender=sender,
