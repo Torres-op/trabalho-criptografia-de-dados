@@ -85,6 +85,15 @@ export async function requestStatus(url, { method = "HEAD" } = {}) {
   }
 }
 
+export function fromBase64(text) {
+  const binary = atob(text);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
 export function toBase64(bytes) {
   const chunk = 0x8000;
   let binary = "";
@@ -100,6 +109,17 @@ export function createRemote(session) {
     publishPublicKey: (jwk) =>
       requestJson(endpoints.publishPublicKey, { method: "POST", body: { jwk }, csrfToken }),
     fetchPeerPublicKey: () => requestJson(endpoints.peerPublicKey),
+    listMessages: (filters = {}) => {
+      const query = new URLSearchParams();
+      for (const [key, value] of Object.entries(filters)) {
+        if (value !== undefined && value !== null && value !== "") {
+          query.set(key, value);
+        }
+      }
+      const search = query.toString();
+      return requestJson(search ? `${endpoints.messages}?${search}` : endpoints.messages);
+    },
+    fetchBlob: (id) => requestJson(`${endpoints.messages}${id}/blob/`),
     hasMessage: async (file) => {
       const status = await requestStatus(`${endpoints.messages}?hash=${await sha256Hex(file)}`);
       if (status !== 200 && status !== 404) {
@@ -110,6 +130,19 @@ export function createRemote(session) {
       }
       return status === 200;
     },
+    saveKeyBackup: (bytes) =>
+      requestJson(endpoints.keyBackup, {
+        method: "POST",
+        body: { blob: toBase64(bytes) },
+        csrfToken,
+      }),
+    fetchKeyBackup: () => requestJson(endpoints.keyBackup),
+    verifyFingerprint: (value) =>
+      requestJson(endpoints.fingerprint, {
+        method: "POST",
+        body: { fingerprint: value },
+        csrfToken,
+      }),
     saveMessage: (file, direction) =>
       requestJson(endpoints.messages, {
         method: "POST",
