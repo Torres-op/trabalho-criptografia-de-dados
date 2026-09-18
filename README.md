@@ -25,6 +25,7 @@ Aplicativo de mensagens criptografadas entre **dois usuários fixos**. A mensage
 | 13 — segurança e hardening | ✅ |
 | 14 — testes e qualidade | parcial: 14.6 e 14.8 são manuais |
 | 15 — documentação | parcial: falta a comparação com gzip (17.2) |
+| 16 — deploy e integração contínua | parcial: falta ligar a conta do Render |
 
 A compressão e a cifragem são **reais**. O fluxo completo funciona: cada usuário gera o próprio par de chaves no primeiro acesso, o servidor distribui as chaves públicas, e o arquivo gerado por um só abre no navegador do outro.
 
@@ -127,6 +128,14 @@ Use duas origens diferentes — o navegador as trata como dispositivos distintos
 
 Entre com um usuário em cada aba. Assim que os dois tiverem aberto o app uma vez, a troca de chaves acontece sozinha. Use sempre a **mesma origem para o mesmo usuário**: cada origem tem o próprio IndexedDB, e entrar pela origem errada gera um par novo, que o servidor recusa.
 
+## Deploy
+
+Publicado no **Render**, a partir do [`render.yaml`](render.yaml). Foi a escolha entre as quatro opções gratuitas do backlog por ser a única que junta, de graça, **HTTPS automático** — sem ele `crypto.subtle` não existe e o app não abre —, **build da mesma imagem Docker que o time usa em desenvolvimento** e **Postgres gerenciado**. Em troca, o serviço hiberna quando fica parado e o banco gratuito expira em 30 dias; o backup diário existe por causa disso.
+
+O [CI](.github/workflows/ci.yml) roda as duas suítes dentro da imagem de produção a cada push e pull request. **Um merge na `main` publica sozinho, e só se os testes passarem** — ninguém faz deploy manual.
+
+Passo a passo, segredos a configurar, backup e restauração: **[`docs/deploy.md`](docs/deploy.md)**.
+
 ---
 
 ## Estrutura
@@ -168,6 +177,9 @@ tests/                     suíte Vitest
   vectors/                 chaves e arquivos de referência, versionados (14.9)
 tools/                     geradores da tabela de frequência e dos vetores
 docs/                      backlog, infraestrutura e convenções
+deploy/start.sh            migrate, seed e gunicorn na imagem de produção
+render.yaml                blueprint do Render: serviço web e banco
+.github/workflows/         CI (testes e deploy) e backup diário do banco
 ```
 
 ## Documentação
@@ -179,6 +191,7 @@ docs/                      backlog, infraestrutura e convenções
 | [`docs/infraestrutura.md`](docs/infraestrutura.md) | Ambiente Docker, comandos, variáveis, troubleshooting |
 | [`docs/convencoes.md`](docs/convencoes.md) | Convenções de código |
 | [`docs/roteiro-de-testes.md`](docs/roteiro-de-testes.md) | Os testes que não dá para automatizar: duas máquinas, adulteração e perda de chave |
+| [`docs/deploy.md`](docs/deploy.md) | Render, pipeline de CI, configuração de produção e backup do banco |
 | [`docs/SEGURANCA.md`](docs/SEGURANCA.md) | O que o sistema protege, o que **não** protege, e o limite da recuperação |
 | [`docs/relatorio-tecnico.md`](docs/relatorio-tecnico.md) | Por que cada decisão foi essa e não outra; números medidos |
 | [`docs/primeiro-uso.md`](docs/primeiro-uso.md) | Guia dos dois usuários finais: backup, comparação dos códigos, primeiro envio |

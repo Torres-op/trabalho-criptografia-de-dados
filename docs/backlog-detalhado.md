@@ -1427,18 +1427,31 @@ Limpar o IndexedDB e validar cada camada de **D11** isoladamente:
 
 > O deploy **não é uma etapa de teste**. O desenvolvimento diário acontece em `localhost` (1.7), que já é contexto seguro. Este épico existe para a integração e a entrega final, e é automatizado justamente para não virar gargalo de equipe.
 
-### 16.1 Escolher plataforma
+### 16.1 Escolher plataforma ✅
 - Opções com HTTPS automático no plano gratuito: Render, Railway, Fly.io, PythonAnywhere.
 - **HTTPS não é opcional em produção** — sem ele, `crypto.subtle` não existe e o app não funciona (D10).
 - **Critério de aceite**: decisão registrada no README com a justificativa.
 
-### 16.2 Deploy contínuo a partir da `main`
+> ✅ **Render**, registrado no README com a justificativa e detalhado em [`deploy.md`](deploy.md). Das quatro opções, é a única que ainda junta HTTPS automático, build da imagem Docker e Postgres no plano gratuito — Railway não tem mais plano gratuito, Fly.io acabou com a franquia e PythonAnywhere não roda container.
+>
+> As duas limitações ficaram registradas em vez de escondidas: o serviço hiberna com 15 minutos de inatividade (primeira requisição lenta, relevante no dia da apresentação) e o banco gratuito **expira em 30 dias** — o que transforma o 16.5 de boa prática em requisito.
+
+### 16.2 Deploy contínuo a partir da `main` 🟡
 - Pipeline que sobe automaticamente a cada merge na `main`, rodando `python manage.py test` e `npm test` antes de publicar.
 - **Construir o alvo `prod` do mesmo `Dockerfile`** (1.9) — o CI e a plataforma usam a imagem que o time já conhece, sem um segundo caminho de build para manter em sincronia.
 - **Ninguém faz deploy manual para testar.** O ambiente reflete o que já foi integrado, e serve para validação de integração e para a apresentação final.
 - **Critério de aceite**: um merge na `main` atualiza o ambiente sem nenhuma ação humana; testes falhando bloqueiam a publicação.
 
-### 16.3 Testar em dispositivo real — túnel self-service
+> 🟡 **O pipeline está escrito em [`ci.yml`](../.github/workflows/ci.yml)**, com os dois jobs de teste e o job de publicação que só roda em push na `main` e só depois de os dois passarem.
+>
+> - **A suíte do Django roda dentro da imagem `prod`**, construída no próprio job — o que é testado é a imagem que vai ao ar.
+> - **`autoDeploy: false` no blueprint.** Se o Render publicasse sozinho a cada push, o deploy sairia em paralelo com o CI e os testes não bloqueariam nada. Quem dispara é o job final, pelo deploy hook.
+> - **Um passo confere que `prod` continua sendo o último estágio do Dockerfile.** Sem alvo explícito, as plataformas constroem o último estágio; um estágio novo depois dele publicaria a imagem errada em silêncio.
+> - O `check --deploy` roda com `--fail-level WARNING` e uma `SECRET_KEY` aleatória: aviso de segurança derruba o build.
+>
+> **Falta o passo humano que só quem tem a conta pode dar:** aplicar o blueprint no Render e guardar o segredo `RENDER_DEPLOY_HOOK` no repositório. Enquanto isso não acontecer, os testes rodam e o job de deploy falha dizendo exatamente o que falta.
+
+### 16.3 Testar em dispositivo real — túnel self-service ✅
 Necessário apenas para o que só existe no celular (o compartilhamento nativo do 8.4). Cada dev sobe o próprio túnel apontando para o próprio `localhost` — não é ambiente compartilhado e ninguém depende de ninguém:
 
 ```bash
@@ -1452,14 +1465,28 @@ docker compose --profile tunnel up tunnel
 - Alternativa totalmente offline: `mkcert` + `runserver_plus --cert-file`, mas exige instalar a CA raiz no celular — bem mais trabalhoso, só vale se não houver internet.
 - **Critério de aceite**: qualquer dev consegue abrir o app no próprio celular com um comando, sem alterar o `settings.py`.
 
-### 16.4 Configuração de produção
+> ✅ **Já vinha pronto do 1.10** — o serviço `tunnel` está no compose sob o profile próprio, e os `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` aceitam o subdomínio aleatório quando `DEBUG=1`. O que faltava era estar documentado fora do backlog: agora está na seção 6 do [`deploy.md`](deploy.md), com o lembrete de fechar o túnel ao terminar.
+
+### 16.4 Configuração de produção ✅
 - `whitenoise` para servir estáticos, `collectstatic` no build, variáveis de ambiente configuradas na plataforma.
 - Conferir o `SECURE_PROXY_SSL_HEADER` do 13.4 — é o erro mais comum neste passo.
 - **Critério de aceite**: `python manage.py check --deploy` limpo no ambiente de produção.
 
-### 16.5 Backup do banco
+> ✅ **O alvo `prod` não construía.** O `collectstatic` do build quebrava com `UndefinedValueError: DATABASE_URL`, porque o `settings.py` lê a variável no import e a máquina de build não tem banco. Ou seja: o deploy nunca teria funcionado. O build agora passa uma URL de mentira só para esse passo; em execução a variável continua obrigatória.
+>
+> Com isso, a imagem foi verificada de ponta a ponta: sobe, roda `migrate` e `seed_users`, responde **200** em `/login/` com o cabeçalho do proxy, responde **301** sem ele (o `SECURE_PROXY_SSL_HEADER` do 13.4 funcionando) e o WhiteNoise serve o CSS com hash e `immutable`. O `check --deploy` fica limpo, e o CI passou a rodá-lo com `--fail-level WARNING`.
+>
+> **Gunicorn com 1 worker e 4 threads, não 3 workers.** O contador do limite de login vive no cache local do processo: com 3 workers, o limite de 5 tentativas viraria 15 — um controle de segurança enfraquecido pela configuração de deploy, não pelo código. Aumentar o `WEB_CONCURRENCY` exige antes um cache compartilhado.
+
+### 16.5 Backup do banco 🟡
 - Rotina de `pg_dump` agendada e documentada. Inclui a tabela `KeyBackup` (6.8) — perdê-la elimina a camada 1 de recuperação de D11.
 - **Critério de aceite**: procedimento de restauração testado ao menos uma vez.
+
+> 🟡 **[`backup.yml`](../.github/workflows/backup.yml) roda todo dia às 03:17 de Brasília** e também sob demanda. Ele gera o dump comprimido, **restaura num banco vazio criado na hora**, conta usuários, mensagens e backups de chave, e só então publica o arquivo como artefato com 30 dias de retenção.
+>
+> A restauração deixou de ser um procedimento escrito que ninguém executa: ela é exercitada **em toda execução**, e o workflow falha se o dump não voltar. O `messenger_keybackup` entra no dump como qualquer outra tabela — perdê-la elimina a camada 1 do D11.
+>
+> **Falta o segredo `DATABASE_URL_EXTERNAL`** (a External Database URL do painel) e a primeira execução de verdade contra o banco publicado.
 
 ---
 
@@ -1484,6 +1511,20 @@ docker compose --profile tunnel up tunnel
 ---
 
 ## Changelog
+
+### Revisão 18 — Épico 16 (deploy e integração contínua)
+
+| Mudança | Motivo |
+|---|---|
+| **Build de produção consertado** | O `collectstatic` do alvo `prod` quebrava por falta de `DATABASE_URL`: a imagem de deploy nunca tinha sido construída |
+| **[`ci.yml`](../.github/workflows/ci.yml)** | Sem pipeline, "testes falhando bloqueiam a publicação" dependia de disciplina humana |
+| **Deploy disparado pelo CI, com `autoDeploy: false`** | Deploy automático do próprio Render correria em paralelo com os testes, e não depois deles |
+| **Guarda do último estágio do Dockerfile** | Plataforma sem alvo explícito constrói o último estágio; um estágio novo depois do `prod` publicaria a imagem errada calado |
+| **[`render.yaml`](../render.yaml)** | O ambiente vira código revisável, como o compose (D12); senhas dos participantes ficam como `sync: false` |
+| **[`deploy/start.sh`](../deploy/start.sh) com `migrate` e `seed_users`** | O plano gratuito não dá shell no container, e sem os 2 participantes o app não abre |
+| **Gunicorn com 1 worker e 4 threads** | Com vários processos, o contador do limite de login se multiplica e o limite de 5 tentativas vira 15 |
+| **[`backup.yml`](../.github/workflows/backup.yml) restaurando o dump que acabou de gerar** | Backup que nunca foi restaurado não é backup — e o banco gratuito do Render expira em 30 dias |
+| **[`deploy.md`](deploy.md)** | Primeiro deploy, segredos, armadilhas e restauração num lugar só |
 
 ### Revisão 17 — Épico 15 (documentação)
 

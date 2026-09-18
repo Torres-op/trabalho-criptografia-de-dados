@@ -79,6 +79,8 @@ docker compose run --rm js npm test
 
 As duas suítes precisam passar. Algumas propriedades estão travadas nas duas linguagens de propósito (o magic `TRHS`, o `TKEY`, o valor do fingerprint, o limite de 1 MB): se você mudar de um lado e não do outro, um dos dois lados falha — é o objetivo.
 
+O CI roda as duas na abertura da PR, dentro da imagem de produção — mas rodar antes evita descobrir pelo GitHub o que a sua máquina já sabia.
+
 Leia também as decisões **D1–D13** no início de [`backlog-detalhado.md`](backlog-detalhado.md). Elas fixam o formato binário, os parâmetros criptográficos e o alfabeto do Huffman, coisas que precisam ser idênticas nos dois lados da comunicação. Divergir delas faz o app falhar silenciosamente.
 
 ## 6. Convenções que aparecem na revisão
@@ -102,3 +104,4 @@ O texto completo está em [`convencoes.md`](convencoes.md).
 | Por que as decisões foram essas? | [`relatorio-tecnico.md`](relatorio-tecnico.md) |
 | O que precisa ser testado à mão? | [`roteiro-de-testes.md`](roteiro-de-testes.md) |
 | O que digo para os dois usuários finais? | [`primeiro-uso.md`](primeiro-uso.md) |
+| Como o app vai ao ar? | [`deploy.md`](deploy.md) |

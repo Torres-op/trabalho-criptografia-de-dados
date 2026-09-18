@@ -1,0 +1,63 @@
+name: Backup do banco
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  dump:
+    name: pg_dump e teste de restauração
+    runs-on: ubuntu-latest
+
+    services:
+      scratch:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: scratch
+          POSTGRES_USER: scratch
+          POSTGRES_PASSWORD: scratch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scratch"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Gera o dump
+        env:
+          SOURCE_URL: ${{ secrets.DATABASE_URL_EXTERNAL }}
+        run: |
+          if [ -z "$SOURCE_URL" ]; then
+            echo "Falta o segredo DATABASE_URL_EXTERNAL."
+            echo "Use a External Database URL do painel do Render."
+            exit 1
+          fi
+          name="treehash-$(date -u +%Y%m%d-%H%M).sql.gz"
+          docker run --rm -e SOURCE_URL postgres:16-alpine \
+            pg_dump "$SOURCE_URL" --no-owner --no-privileges --clean --if-exists \
+            | gzip -9 > "$name"
+          echo "DUMP=$name" >> "$GITHUB_ENV"
+          ls -lh "$name"
+
+      - name: Restaura o dump num banco vazio
+        run: |
+          gunzip -c "$DUMP" | docker run --rm -i --network host postgres:16-alpine \
+            psql postgres://scratch:scratch@localhost:5432/scratch -v ON_ERROR_STOP=1 -q
+
+      - name: Confere o que voltou
+        run: |
+          docker run --rm --network host postgres:16-alpine \
+            psql postgres://scratch:scratch@localhost:5432/scratch -t -A -c \
+            "select 'usuarios=' || (select count(*) from auth_user)
+                 || ' mensagens=' || (select count(*) from messenger_message)
+                 || ' backups=' || (select count(*) from messenger_keybackup)"
+
+      - name: Guarda o arquivo
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DUMP }}
+          path: ${{ env.DUMP }}
+          retention-days: 30
