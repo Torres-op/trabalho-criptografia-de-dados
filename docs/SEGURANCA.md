@@ -169,7 +169,7 @@ A ordenação dos usernames no salt usa comparação de unidades de código, **n
 | O servidor não aceita backup inválido | Testes de envelope: magic, versão, tamanho |
 | O código de segurança é igual nos dois lados | O mesmo valor fixado em um teste Python e um JavaScript |
 
-São 158 testes no servidor e 389 no navegador. O que não dá para automatizar — duas máquinas de verdade, editor hexadecimal, apagar o IndexedDB — está no [`roteiro-de-testes.md`](roteiro-de-testes.md).
+São 158 testes no servidor e 378 no navegador. O que não dá para automatizar — duas máquinas de verdade, editor hexadecimal, apagar o IndexedDB — está no [`roteiro-de-testes.md`](roteiro-de-testes.md).
 
 ---
 

@@ -134,7 +134,7 @@ O conteúdo do dump é cifrado (blobs das mensagens, backups de chave) ou hash (
 
 ## 6. Testar no celular
 
-Só é necessário para o que existe apenas no celular, como o compartilhamento nativo. Cada dev sobe o próprio túnel, apontado para o próprio `localhost`:
+Nenhuma função do app depende de celular — o compartilhamento nativo saiu da interface. O túnel continua útil para conferir a tela num aparelho de verdade, e cada dev sobe o próprio, apontado para o próprio `localhost`:
 
 ```bash
 docker compose --profile tunnel up tunnel

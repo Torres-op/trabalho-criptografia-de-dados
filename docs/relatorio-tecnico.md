@@ -167,7 +167,7 @@ O envelope custa **43 bytes fixos** (27 de cabeçalho + 16 de tag). Isso faz men
 |---|---|
 | Exemplo real documentado | 65 bytes: 27 de cabeçalho, 22 de conteúdo comprimido, 16 de tag |
 | PBKDF2 com 600.000 iterações | ~270 ms |
-| Testes automatizados | 158 no servidor, 389 no navegador |
+| Testes automatizados | 158 no servidor, 378 no navegador |
 
 ---
 

@@ -1,6 +1,4 @@
-import { hasPersistentStorage } from "./environment.js";
-
-export function buildSignals({ peerUsername, localKey, peerKey, verified, backup, persisted }) {
+export function buildSignals({ peerUsername, localKey, peerKey, verified, backup }) {
   return [
     {
       id: "localKey",
@@ -33,14 +31,6 @@ export function buildSignals({ peerUsername, localKey, peerKey, verified, backup
       hint: backup
         ? "Há um backup da sua chave guardado no servidor."
         : "Sem backup, limpar este navegador apaga o acesso ao histórico.",
-    },
-    {
-      id: "persisted",
-      label: "Armazenamento permanente",
-      ok: Boolean(persisted),
-      hint: persisted
-        ? "O navegador prometeu não limpar os dados deste site sozinho."
-        : "O navegador pode limpar os dados deste site para liberar espaço.",
     },
   ];
 }
@@ -87,7 +77,6 @@ export async function showBadge(target, { context, session, remote, backup }) {
   }
 
   const stored = backup === undefined ? await hasKeyBackup(remote) : backup;
-  const persisted = await hasPersistentStorage();
 
   renderBadge(
     target,
@@ -97,7 +86,6 @@ export async function showBadge(target, { context, session, remote, backup }) {
       peerKey: Boolean(session?.ready),
       verified: Boolean(session?.peerVerified),
       backup: stored,
-      persisted,
     })
   );
 }

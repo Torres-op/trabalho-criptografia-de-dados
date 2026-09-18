@@ -696,6 +696,8 @@ if (navigator.storage?.persist) {
 > ✅ **Pendência fechada em 18/09/2026.** O aviso agora só aparece quando o navegador negou o armazenamento **e** não há backup guardado, e aponta a saída: guardar o backup na tela de Identidade. Com backup guardado, ele cala — o risco vira aborrecimento, não perda, e quem continua marcando o ponto é o sinal do 12.4.
 >
 > A decisão ficou em `storageNotices()`, função pura em `environment.js`, com **4 testes**. Vale registrar o que o `persist()` faz de verdade: o Chrome nunca pergunta e concede por heurística de engajamento (site instalado, favoritado, muito uso), então em `localhost` ele costuma negar calado; o Firefox pergunta. Receber `false` não é sintoma de bug no app.
+>
+> **O sinal correspondente saiu do indicador em 18/09/2026** (ver 12.4): como o usuário não tem como conceder a persistência por vontade própria, ele ficava preso em "falta" para sempre. O pedido no boot e o aviso para quem não tem backup continuam de pé — o que mudou é que a interface parou de cobrar uma ação que não existe.
 
 ---
 
@@ -901,13 +903,13 @@ Bits/caractere:   4,31       (UTF-8: 8,32)
 
 > Este épico não existia no backlog anterior, apesar de ser o requisito central do projeto. Cada canal tem um detalhe próprio.
 
-> ✅ **Concluído em 17/09/2026.** A seção *Enviar para o destinatário* aparece no compositor assim que o arquivo é gerado, com quatro caminhos: baixar de novo, copiar como texto, abrir no e-mail e o compartilhamento nativo do sistema.
+> ✅ **Concluído em 17/09/2026.** A seção *Enviar para o destinatário* aparece no compositor assim que o arquivo é gerado, com dois caminhos: baixar de novo e copiar como texto.
+>
+> **Em 18/09/2026 os botões de e-mail (8.3) e de compartilhamento nativo (8.4) saíram da tela, a pedido do cliente**, porque não funcionavam na máquina dele: o `mailto:` depende de um programa de e-mail registrado no sistema, e o `navigator.share` com arquivos praticamente só existe no celular. Os dois caminhos que sobraram cobrem todos os canais do épico.
 >
 > - **O bloco colável leva uma linha de apresentação antes dos marcadores.** O `fromArmor` ignora texto em volta (5.5), então quem recebe entende o que é aquilo sem quebrar a leitura. Há teste com o bloco cercado de texto dos dois lados.
 > - **A cópia tem plano B.** Se o navegador recusar a área de transferência, o bloco aparece numa caixa de texto já selecionada, em vez de falhar em silêncio.
-> - **O botão nativo só existe quando dá.** `navigator.canShare({ files })` é consultado com o arquivo real; no desktop ele simplesmente não aparece, e um `canShare` que estoura também derruba o botão.
-> - **Desistir do compartilhamento não é erro.** `AbortError` é tratado à parte, sem mensagem de falha.
-> - **17 testes** em `tests/share.test.js`.
+> - **6 testes** em `tests/share.test.js`, depois da remoção do 8.3 e do 8.4.
 >
 > **O que ainda não dá para conferir na tela:** colar o bloco no tradutor, porque a entrada de texto colado é o 9.1. Hoje o round-trip é garantido por teste (`fromArmor(pasteBlock(bytes))`), não pela interface.
 
@@ -922,16 +924,24 @@ Bits/caractere:   4,31       (UTF-8: 8,32)
 - Confirmação visual ("copiado!") após o clique.
 - **Critério de aceite**: o bloco copiado, colado no tradutor, decifra corretamente.
 
-### 8.3 E-mail — instrução explícita sobre anexo ✅
+### 8.3 E-mail — instrução explícita sobre anexo ❌ removido da interface
 - **`mailto:` não consegue anexar arquivos.** Não tentar implementar isso.
 - Oferecer duas opções na interface: "Copiar como texto" (8.2) ou "Baixar e anexar manualmente" (8.1), com o botão `mailto:` preenchendo apenas assunto e corpo com uma instrução.
 - **Critério de aceite**: a interface não promete anexo automático em nenhum momento.
 
-### 8.4 Compartilhamento nativo (progressive enhancement) ✅
+> ❌ **Fora da tela desde 18/09/2026, a pedido do cliente.** O botão não abria nada na máquina dele — `mailto:` só funciona quando existe um programa de e-mail registrado como handler no sistema operacional ou no navegador, e num desktop que usa webmail isso costuma não existir.
+>
+> **Abrir o webmail numa aba não substitui o botão.** Um link de composição (`mail.google.com/mail/?view=cm&...`) funcionaria só para um provedor, continuaria sem anexar o arquivo e caberia mal para mensagens longas, porque tudo viajaria na URL. O caminho que sobrou é melhor: "Copiar como texto" e colar no webmail que a pessoa já usa.
+
+### 8.4 Compartilhamento nativo (progressive enhancement) ❌ removido da interface
 - Se `navigator.canShare?.({ files: [...] })` for verdadeiro, exibir botão "Compartilhar" usando `navigator.share`.
 - Abre o menu nativo do sistema (Android/iOS), entregando WhatsApp, e-mail e mais em um clique.
 - Se a API não existir, o botão simplesmente não aparece — os demais caminhos continuam funcionando.
 - **Critério de aceite**: no desktop sem suporte, nada quebra; no celular com suporte, o menu nativo abre com o arquivo anexado.
+
+> ❌ **Fora da tela desde 18/09/2026, a pedido do cliente.** O botão nascia escondido e só aparecia quando `navigator.canShare({ files })` dava verdadeiro — no desktop, quase nunca. Do ponto de vista de quem usa, era um botão que não fazia nada.
+>
+> Era a única função do app que exigia celular para ser testada (16.3). Sem ela, o túnel HTTPS continua útil, mas deixa de ser necessário.
 
 ### 8.5 Aviso sobre o canal ✅
 - Texto curto na interface: o arquivo é seguro para trafegar por qualquer canal, mas **a senha/verificação de identidade nunca deve ir pelo mesmo canal**.
@@ -1162,11 +1172,14 @@ Se um usuário perde a chave e nenhum backup funciona, o outro ainda tem a dele 
 - Qualquer sinal negativo leva, com um clique, à ação que o resolve.
 - **Critério de aceite**: o usuário identifica em um olhar se o canal está pronto para uso e se sua chave está protegida contra perda.
 
-> ✅ Badge no topo, em todas as páginas, com os cinco sinais previstos: chave deste navegador, chave do outro usuário, identidade conferida, backup guardado e armazenamento permanente. Mostra "3/5" e fica verde só quando os cinco estão em ordem; o clique leva para a tela de Identidade, que é onde três deles se resolvem.
+> ✅ Badge no topo, em todas as páginas, com quatro sinais: chave deste navegador, chave do outro usuário, identidade conferida e backup guardado. Mostra "3/4" e fica verde só quando os quatro estão em ordem; o clique leva para a tela de Identidade, que é onde três deles se resolvem.
 >
 > - **A lógica ficou fora do DOM** (`buildSignals` e `summarize` em `badge.js`), então dá para testar: **7 testes** em `tests/badge.test.js`.
 > - O sinal da chave local usa o 409 do write-once: se o servidor recusa a chave deste navegador, é porque ela não é a registrada — e a dica manda restaurar o backup.
-> - O armazenamento permanente é consultado com `navigator.storage.persisted()`, que **não** dispara pedido de permissão — quem pede é o boot da página (4.9).
+>
+> **O quinto sinal, "armazenamento permanente", saiu em 18/09/2026, a pedido do cliente.** Ele travava o badge em 4/5 sem que o usuário tivesse como resolver: quem concede a persistência é o navegador, por heurística própria (site instalado, muito uso, permissão de notificação), e `navigator.storage.persist()` nem sempre pergunta alguma coisa. Um item de checklist que a pessoa não consegue completar só ensina a ignorar o checklist.
+>
+> O pedido de persistência do 4.9 continua acontecendo no boot, e o aviso de risco continua aparecendo para quem **não** tem backup — que é o caso em que a perda seria real.
 
 ### 12.5 Árvore Binária de Busca na tela ✅
 
@@ -1466,6 +1479,8 @@ docker compose --profile tunnel up tunnel
 - **Critério de aceite**: qualquer dev consegue abrir o app no próprio celular com um comando, sem alterar o `settings.py`.
 
 > ✅ **Já vinha pronto do 1.10** — o serviço `tunnel` está no compose sob o profile próprio, e os `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` aceitam o subdomínio aleatório quando `DEBUG=1`. O que faltava era estar documentado fora do backlog: agora está na seção 6 do [`deploy.md`](deploy.md), com o lembrete de fechar o túnel ao terminar.
+>
+> **Com a saída do 8.4 (18/09/2026), o túnel deixou de ser obrigatório para alguma função:** nenhuma parte do app depende mais de celular. Ele continua servindo para conferir a interface responsiva num aparelho de verdade.
 
 ### 16.4 Configuração de produção ✅
 - `whitenoise` para servir estáticos, `collectstatic` no build, variáveis de ambiente configuradas na plataforma.
@@ -1511,6 +1526,16 @@ docker compose --profile tunnel up tunnel
 ---
 
 ## Changelog
+
+### Revisão 19 — ajustes de interface pedidos pelo cliente
+
+| Mudança | Motivo |
+|---|---|
+| **Botão "Abrir no e-mail" removido** | `mailto:` depende de um programa de e-mail registrado no sistema; sem isso o botão não faz nada, e quem usa webmail fica sem retorno nenhum |
+| **Botão "Compartilhar" removido** | `navigator.share` com arquivos praticamente só existe no celular; no desktop o botão nascia escondido e parecia quebrado |
+| **Texto de apoio do envio encurtado** | Metade dele explicava as limitações dos dois botões que saíram |
+| **Sinal "armazenamento permanente" fora do indicador** | Travava o badge em 4/5 sem ação possível: a persistência é concedida por heurística do navegador, não por escolha do usuário |
+| **`share.js` enxugado** | `mailtoLink`, `mailBody`, `fileFor`, `canShareFile` e `shareFile` ficaram sem uso; ficaram no histórico do Git, não no módulo |
 
 ### Revisão 18 — Épico 16 (deploy e integração contínua)
 
