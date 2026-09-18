@@ -1,17 +1,22 @@
 import base64
 import binascii
+import hashlib
 import json
+import re
+from datetime import date
 from functools import wraps
 
 from django.core.paginator import Paginator
-from django.db import transaction
-from django.http import JsonResponse
+from django.db import IntegrityError, transaction
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
+from django.views.decorators.debug import sensitive_variables
 from django.views.decorators.http import require_http_methods
 
-from .jwk import InvalidPublicKey, canonical_public_jwk, load_public_jwk
+from .jwk import InvalidPublicKey, canonical_public_jwk, fingerprint, load_public_jwk
+from .key_backup_format import InvalidBackup, validate_backup
 from .message_format import InvalidMessage, parse_header
-from .models import Message, Profile
+from .models import KeyBackup, Message, Profile
 from .participants import NotAParticipant, get_other_user, participants, sender_id_for
 
 KEY_CONFLICT_MESSAGE = (
@@ -20,7 +25,12 @@ KEY_CONFLICT_MESSAGE = (
     "Restaure o backup da sua chave ou peça ao administrador para liberar um novo registro."
 )
 
+HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 PAGE_SIZE = 20
+
+
+class InvalidFilter(Exception):
+    pass
 
 
 def error_response(status, code, message):
@@ -56,6 +66,7 @@ def key_payload(user, profile):
         "registeredAt": profile.key_registered_at.isoformat()
         if profile.key_registered_at
         else None,
+        "fingerprintVerified": profile.fingerprint_verified,
     }
 
 
@@ -124,16 +135,58 @@ def fetch_public_key(request, username):
     return JsonResponse(key_payload(target, target.profile))
 
 
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["GET", "HEAD", "POST"])
 @participant_api
 def messages(request):
     if request.method == "POST":
         return save_message(request)
+    if request.method == "HEAD":
+        return check_message(request)
     return list_messages(request)
 
 
+def check_message(request):
+    digest = request.GET.get("hash", "")
+    if not HASH_PATTERN.fullmatch(digest):
+        return HttpResponse(status=400)
+
+    found = Message.objects.owned_by(request.user).filter(blob_sha256=digest).exists()
+    return HttpResponse(status=200 if found else 404)
+
+
+def parse_date(value):
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise InvalidFilter(f"Data inválida: {value}. Use o formato AAAA-MM-DD.") from None
+
+
+def filtered_messages(request):
+    messages = Message.objects.owned_by(request.user).select_related("sender", "recipient")
+
+    direction = request.GET.get("direction")
+    if direction is not None:
+        if direction not in Message.Direction.values:
+            raise InvalidFilter("Filtre por mensagens enviadas ou recebidas.")
+        messages = messages.filter(direction=direction)
+
+    since = request.GET.get("from")
+    if since is not None:
+        messages = messages.filter(created_at__date__gte=parse_date(since))
+
+    until = request.GET.get("to")
+    if until is not None:
+        messages = messages.filter(created_at__date__lte=parse_date(until))
+
+    return messages
+
+
 def list_messages(request):
-    owned = Message.objects.owned_by(request.user).select_related("sender", "recipient")
+    try:
+        owned = filtered_messages(request)
+    except InvalidFilter as error:
+        return error_response(400, "invalid_filter", str(error))
+
     page = Paginator(owned, PAGE_SIZE).get_page(request.GET.get("page"))
 
     return JsonResponse(
@@ -146,6 +199,11 @@ def list_messages(request):
     )
 
 
+def owned_copy(user, digest, direction):
+    return Message.objects.owned_by(user).filter(blob_sha256=digest, direction=direction).first()
+
+
+@sensitive_variables("payload", "blob", "digest")
 def save_message(request):
     payload = read_json_object(request)
     if payload is None:
@@ -175,12 +233,110 @@ def save_message(request):
             "O cabeçalho do arquivo indica outro remetente. A mensagem não foi salva.",
         )
 
-    message = Message.objects.create(
-        sender=sender,
-        recipient=recipient,
-        blob=blob,
-        created_at=header.created_at,
-        direction=direction,
-    )
+    digest = hashlib.sha256(blob).hexdigest()
+    saved = owned_copy(request.user, digest, direction)
+    if saved is not None:
+        return JsonResponse(message_payload(saved), status=200)
+
+    try:
+        with transaction.atomic():
+            message = Message.objects.create(
+                sender=sender,
+                recipient=recipient,
+                blob=blob,
+                created_at=header.created_at,
+                direction=direction,
+            )
+    except IntegrityError:
+        saved = owned_copy(request.user, digest, direction)
+        if saved is None:
+            raise
+        return JsonResponse(message_payload(saved), status=200)
 
     return JsonResponse(message_payload(message), status=201)
+
+
+@require_http_methods(["GET"])
+@participant_api
+@sensitive_variables("message")
+def message_blob(request, message_id):
+    message = Message.objects.owned_by(request.user).filter(pk=message_id).first()
+    if message is None:
+        return error_response(404, "message_not_found", "Mensagem não encontrada no seu histórico.")
+
+    return JsonResponse(
+        {**message_payload(message), "blob": base64.b64encode(bytes(message.blob)).decode()}
+    )
+
+
+@require_http_methods(["POST"])
+@participant_api
+def verify_fingerprint(request):
+    payload = read_json_object(request)
+    if payload is None:
+        return error_response(400, "invalid_json", "O corpo da requisição precisa ser um objeto JSON.")
+
+    profile = Profile.objects.get(user=request.peer)
+    if not profile.ecdh_public_key:
+        return error_response(
+            404,
+            "key_not_published",
+            f"{request.peer.get_username()} ainda não registrou uma chave pública.",
+        )
+
+    given = payload.get("fingerprint")
+    if not isinstance(given, str) or given.strip().lower() != fingerprint(profile.ecdh_public_key):
+        return error_response(
+            409,
+            "fingerprint_mismatch",
+            "O código conferido não é o da chave que está no servidor agora. "
+            "Recarregue a página e confira de novo antes de marcar.",
+        )
+
+    profile.fingerprint_verified = True
+    profile.save(update_fields=["fingerprint_verified"])
+    return JsonResponse(key_payload(request.peer, profile))
+
+
+def backup_payload(backup):
+    return {
+        "id": backup.pk,
+        "createdAt": backup.created_at.isoformat(),
+        "size": len(backup.blob),
+    }
+
+
+@require_http_methods(["GET", "POST"])
+@participant_api
+def key_backup(request):
+    if request.method == "POST":
+        return save_key_backup(request)
+    return latest_key_backup(request)
+
+
+@sensitive_variables("payload", "blob")
+def save_key_backup(request):
+    payload = read_json_object(request)
+    if payload is None:
+        return error_response(400, "invalid_json", "O corpo da requisição precisa ser um objeto JSON.")
+
+    try:
+        blob = validate_backup(decode_blob(payload.get("blob")))
+    except (InvalidMessage, InvalidBackup) as error:
+        return error_response(400, "invalid_backup", str(error))
+
+    backup = KeyBackup.objects.create(user=request.user, blob=blob)
+    return JsonResponse(backup_payload(backup), status=201)
+
+
+@sensitive_variables("backup")
+def latest_key_backup(request):
+    backup = KeyBackup.objects.filter(user=request.user).first()
+    if backup is None:
+        return error_response(
+            404, "backup_not_found", "Você ainda não guardou um backup da sua chave no servidor."
+        )
+
+    return JsonResponse(
+        {**backup_payload(backup), "blob": base64.b64encode(bytes(backup.blob)).decode()}
+    )

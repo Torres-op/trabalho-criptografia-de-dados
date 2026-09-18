@@ -3,8 +3,10 @@ import struct
 
 from django.contrib.auth import get_user_model
 
+from messenger.key_backup_format import MAGIC as BACKUP_MAGIC
+from messenger.key_backup_format import VERSION as BACKUP_VERSION
 from messenger.message_format import FLAG_COMPRESSED, IV_SIZE, MAGIC, TAG_SIZE, VERSION
-from messenger.models import Profile
+from messenger.models import KeyBackup, Profile
 
 PASSWORD = "senha-de-teste-123"
 CREATED_AT_MS = 1_788_940_294_016
@@ -53,3 +55,12 @@ def make_blob(sender_id=0, created_at_ms=CREATED_AT_MS, compressed=True, body_si
 
 def encode_blob(blob):
     return base64.b64encode(blob).decode("ascii")
+
+
+def make_backup_blob(version=BACKUP_VERSION, filler=b"c", extra=64):
+    header = BACKUP_MAGIC + bytes([version]) + struct.pack(">I", 600_000) + b"s" * 16 + b"i" * 12
+    return header + filler * (16 + extra)
+
+
+def make_backup(user, blob=None):
+    return KeyBackup.objects.create(user=user, blob=make_backup_blob() if blob is None else blob)

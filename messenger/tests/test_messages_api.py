@@ -1,6 +1,9 @@
+import base64
+import hashlib
 import json
 from datetime import datetime, timezone
 
+from django.db import IntegrityError, transaction
 from django.test import Client, TestCase
 from django.urls import reverse
 
@@ -96,12 +99,14 @@ class ListMessagesTests(TestCase):
     def setUp(self):
         self.diretor, self.marcio = make_pair()
         self.client.force_login(self.diretor)
+        self.made = 0
 
     def create_message(self, sender, recipient, direction, sender_id=0):
+        self.made += 1
         return Message.objects.create(
             sender=sender,
             recipient=recipient,
-            blob=make_blob(sender_id=sender_id),
+            blob=make_blob(sender_id=sender_id, body_size=self.made),
             created_at=datetime(2026, 9, 17, 12, tzinfo=timezone.utc),
             direction=direction,
         )
@@ -177,3 +182,163 @@ class ListMessagesTests(TestCase):
 
     def test_refuses_other_methods(self):
         self.assertEqual(self.client.delete(MESSAGES_URL).status_code, 405)
+
+
+class DeduplicationTests(TestCase):
+    def setUp(self):
+        self.diretor, self.marcio = make_pair()
+        self.client.force_login(self.diretor)
+        self.blob = make_blob(sender_id=0)
+        self.digest = hashlib.sha256(self.blob).hexdigest()
+
+    def save(self, direction=Message.Direction.SENT):
+        return self.client.post(
+            MESSAGES_URL,
+            json.dumps({"blob": encode_blob(self.blob), "direction": direction}),
+            content_type="application/json",
+        )
+
+    def head(self, digest, client=None):
+        return (client or self.client).head(f"{MESSAGES_URL}?hash={digest}")
+
+    def test_stores_the_hash_of_the_blob(self):
+        self.save()
+        self.assertEqual(Message.objects.get().blob_sha256, self.digest)
+
+    def test_saving_the_same_file_twice_keeps_one_row(self):
+        first = self.save()
+        second = self.save()
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["id"], first.json()["id"])
+        self.assertEqual(Message.objects.count(), 1)
+
+    def test_the_database_refuses_a_second_copy(self):
+        self.save()
+        message = Message.objects.get()
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Message.objects.create(
+                sender=message.sender,
+                recipient=message.recipient,
+                blob=self.blob,
+                created_at=message.created_at,
+                direction=message.direction,
+            )
+
+    def test_says_whether_the_message_is_already_saved(self):
+        self.assertEqual(self.head(self.digest).status_code, 404)
+        self.save()
+        self.assertEqual(self.head(self.digest).status_code, 200)
+
+    def test_does_not_answer_for_the_copy_of_the_other_user(self):
+        self.save()
+        self.client.force_login(self.marcio)
+
+        self.assertEqual(self.head(self.digest).status_code, 404)
+
+    def test_both_users_keep_their_own_copy_of_the_same_file(self):
+        self.save()
+        self.client.force_login(self.marcio)
+        response = self.save(direction=Message.Direction.RECEIVED)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Message.objects.count(), 2)
+
+    def test_rejects_a_hash_that_is_not_a_hash(self):
+        self.assertEqual(self.head("nao-e-um-hash").status_code, 400)
+        self.assertEqual(self.client.head(MESSAGES_URL).status_code, 400)
+
+    def test_requires_login(self):
+        self.assertEqual(self.head(self.digest, client=Client()).status_code, 401)
+
+
+class MessageBlobTests(TestCase):
+    def setUp(self):
+        self.diretor, self.marcio = make_pair()
+        self.client.force_login(self.diretor)
+        self.blob = make_blob(sender_id=0)
+        self.message = Message.objects.create(
+            sender=self.diretor,
+            recipient=self.marcio,
+            blob=self.blob,
+            created_at=datetime(2026, 9, 17, 12, tzinfo=timezone.utc),
+            direction=Message.Direction.SENT,
+        )
+
+    def url(self, message_id=None):
+        return reverse("messenger:api-message-blob", args=[message_id or self.message.pk])
+
+    def test_returns_the_stored_bytes_with_the_metadata(self):
+        body = self.client.get(self.url()).json()
+
+        self.assertEqual(base64.b64decode(body["blob"]), self.blob)
+        self.assertEqual(body["id"], self.message.pk)
+        self.assertEqual(body["direction"], "sent")
+
+    def test_does_not_serve_the_copy_of_the_other_user(self):
+        self.client.force_login(self.marcio)
+        response = self.client.get(self.url())
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "message_not_found")
+
+    def test_answers_404_for_a_message_that_does_not_exist(self):
+        self.assertEqual(self.client.get(self.url(self.message.pk + 99)).status_code, 404)
+
+    def test_requires_login(self):
+        self.assertEqual(Client().get(self.url()).status_code, 401)
+
+    def test_refuses_who_is_not_a_participant(self):
+        self.client.force_login(make_superuser())
+
+        self.assertEqual(self.client.get(self.url()).status_code, 403)
+
+
+class ListFilterTests(TestCase):
+    def setUp(self):
+        self.diretor, self.marcio = make_pair()
+        self.client.force_login(self.diretor)
+        self.sent = self.create(Message.Direction.SENT, datetime(2026, 9, 1, 12, tzinfo=timezone.utc))
+        self.received = self.create(
+            Message.Direction.RECEIVED, datetime(2026, 9, 10, 12, tzinfo=timezone.utc)
+        )
+
+    def create(self, direction, created_at):
+        sent = direction == Message.Direction.SENT
+        return Message.objects.create(
+            sender=self.diretor if sent else self.marcio,
+            recipient=self.marcio if sent else self.diretor,
+            blob=make_blob(sender_id=0 if sent else 1),
+            created_at=created_at,
+            direction=direction,
+        )
+
+    def ids(self, query=""):
+        return [item["id"] for item in self.client.get(f"{MESSAGES_URL}{query}").json()["results"]]
+
+    def test_lists_everything_without_filter(self):
+        self.assertCountEqual(self.ids(), [self.sent.pk, self.received.pk])
+
+    def test_filters_by_direction(self):
+        self.assertEqual(self.ids("?direction=sent"), [self.sent.pk])
+        self.assertEqual(self.ids("?direction=received"), [self.received.pk])
+
+    def test_filters_from_a_date(self):
+        self.assertEqual(self.ids("?from=2026-09-05"), [self.received.pk])
+
+    def test_filters_until_a_date(self):
+        self.assertEqual(self.ids("?to=2026-09-05"), [self.sent.pk])
+
+    def test_rejects_an_unknown_direction(self):
+        response = self.client.get(f"{MESSAGES_URL}?direction=xpto")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "invalid_filter")
+
+    def test_rejects_a_date_that_is_not_a_date(self):
+        response = self.client.get(f"{MESSAGES_URL}?from=ontem")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("AAAA-MM-DD", response.json()["error"])
